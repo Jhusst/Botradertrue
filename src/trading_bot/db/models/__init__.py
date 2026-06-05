@@ -4,6 +4,7 @@ from trading_bot.db.models.alert_log import AlertLog
 from trading_bot.db.models.audit import AuditLog
 from trading_bot.db.models.backtest import BacktestRun
 from trading_bot.db.models.signal import Signal
+from trading_bot.db.models.signal_outcome import SignalOutcome
 from trading_bot.db.models.trade import PaperTrade
 from trading_bot.db.models.user_trade import UserTrade
 
@@ -15,5 +16,6 @@ __all__ = [
     "BacktestRun",
     "PaperTrade",
     "Signal",
+    "SignalOutcome",
     "UserTrade",
 ]

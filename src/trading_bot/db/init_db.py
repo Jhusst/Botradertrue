@@ -10,6 +10,7 @@ from trading_bot.db.models import (  # noqa: F401
     BacktestRun,
     PaperTrade,
     Signal,
+    SignalOutcome,
     UserTrade,
 )
 from trading_bot.db.seed_profiles import ensure_profiles
@@ -63,11 +64,34 @@ async def _migrate_accounts_columns(engine: AsyncEngine) -> None:
                 await conn.execute(text(f"ALTER TABLE accounts ADD COLUMN {name} {col_type}"))
 
 
+SIGNAL_OUTCOMES_EXTRA_COLUMNS = {
+    "min_price_seen": "NUMERIC(18, 8)",
+    "max_price_seen": "NUMERIC(18, 8)",
+}
+
+
+async def _migrate_signal_outcomes_columns(engine: AsyncEngine) -> None:
+    if not str(engine.url).startswith("sqlite"):
+        return
+    async with engine.begin() as conn:
+        def _get_columns(sync_conn):
+            inspector = inspect(sync_conn)
+            if not inspector.has_table("signal_outcomes"):
+                return set()
+            return {col["name"] for col in inspector.get_columns("signal_outcomes")}
+
+        existing = await conn.run_sync(_get_columns)
+        for name, col_type in SIGNAL_OUTCOMES_EXTRA_COLUMNS.items():
+            if name not in existing:
+                await conn.execute(text(f"ALTER TABLE signal_outcomes ADD COLUMN {name} {col_type}"))
+
+
 async def create_tables(engine: AsyncEngine) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     await _migrate_sqlite_columns(engine)
     await _migrate_accounts_columns(engine)
+    await _migrate_signal_outcomes_columns(engine)
     from trading_bot.db.session import async_session_factory
 
     async with async_session_factory() as session:

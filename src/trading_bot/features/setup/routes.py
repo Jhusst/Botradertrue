@@ -1,6 +1,12 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from sqlalchemy import desc, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from trading_bot.config.settings import get_settings
+from trading_bot.db.models.alert_log import AlertLog
+from trading_bot.db.models.signal import Signal
+from trading_bot.db.models.user_trade import UserTrade
+from trading_bot.db.session import get_db
 from trading_bot.features.alerts.telegram import TelegramNotifier
 
 router = APIRouter(prefix="/setup", tags=["setup"])
@@ -90,24 +96,84 @@ async def setup_check() -> dict:
 @router.post("/test-telegram")
 async def test_telegram() -> dict:
     """Envía un mensaje de prueba a tu Telegram."""
-    settings = get_settings()
-    notifier = TelegramNotifier(settings)
-
+    notifier = TelegramNotifier(get_settings())
+    result = await notifier.probe()
     if not notifier.is_configured:
-        return {
-            "ok": False,
-            "error": "Telegram no configurado",
-            "detail": "Faltan TELEGRAM_BOT_TOKEN y/o TELEGRAM_CHAT_ID en .env",
-            "help_url": "/docs/TELEGRAM_SETUP.md",
-        }
+        result["help_url"] = "/docs/TELEGRAM_SETUP.md"
+        result["detail"] = "Faltan TELEGRAM_BOT_TOKEN y/o TELEGRAM_CHAT_ID en .env"
+    elif not result["ok"]:
+        result["hint"] = (
+            "Si dice 'chat not found': abre tu bot en Telegram y pulsa Start (/start), "
+            "luego verifica TELEGRAM_CHAT_ID con @userinfobot."
+        )
+    else:
+        result["message"] = "Mensaje enviado a Telegram"
+    return result
 
-    message = (
-        "✅ <b>Trading Bot conectado</b>\n"
-        "Si ves este mensaje, las alertas funcionarán.\n"
-        "Recibirás avisos cuando haya señales y entradas."
-    )
-    sent = await notifier.send_raw(message, urgent=True)
+
+@router.get("/activity")
+async def bot_activity(db: AsyncSession = Depends(get_db)) -> dict:
+    """Últimas alertas, entregas Telegram e intentos de trade — para depurar."""
+    settings = get_settings()
+    total_alerts = (await db.execute(select(func.count()).select_from(AlertLog))).scalar() or 0
+    delivered = (
+        await db.execute(select(func.count()).select_from(AlertLog).where(AlertLog.delivered.is_(True)))
+    ).scalar() or 0
+
+    recent_alerts = (
+        await db.execute(select(AlertLog).order_by(desc(AlertLog.created_at)).limit(20))
+    ).scalars().all()
+
+    open_trades = (
+        await db.execute(select(UserTrade).where(UserTrade.status == "OPEN").order_by(desc(UserTrade.created_at)))
+    ).scalars().all()
+
+    active_signals = (
+        await db.execute(
+            select(Signal).where(Signal.status == "ACTIVE").order_by(desc(Signal.created_at)).limit(10)
+        )
+    ).scalars().all()
+
+    telegram_status = await TelegramNotifier(settings).check_connection()
+
     return {
-        "ok": sent,
-        "message": "Mensaje enviado" if sent else "Error al enviar — revisa token y chat_id",
+        "telegram": {
+            "configured": TelegramNotifier(settings).is_configured,
+            "connection_ok": telegram_status.get("ok"),
+            "connection_error": telegram_status.get("error"),
+        },
+        "autonomous": {
+            "enabled": settings.autonomous_trading_enabled,
+            "broker_enabled": settings.broker_enabled,
+            "live_mode_enabled": settings.live_mode_enabled,
+        },
+        "alerts": {
+            "total": total_alerts,
+            "delivered": delivered,
+            "failed": total_alerts - delivered,
+            "recent": [
+                {
+                    "at": a.created_at.isoformat() if a.created_at else None,
+                    "type": a.alert_type,
+                    "signal_id": a.signal_id,
+                    "delivered": a.delivered,
+                }
+                for a in recent_alerts
+            ],
+        },
+        "open_trades": [
+            {
+                "id": t.id,
+                "symbol": t.symbol,
+                "direction": t.direction,
+                "notes": t.notes,
+                "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+            }
+            for t in open_trades
+        ],
+        "active_signals_count": len(active_signals),
+        "active_signals": [
+            {"id": s.id, "symbol": s.symbol, "direction": s.direction, "entry": str(s.entry_price)}
+            for s in active_signals
+        ],
     }

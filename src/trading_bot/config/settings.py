@@ -80,6 +80,10 @@ class Settings(BaseSettings):
     dedup_signal_minutes: int = 30
     auto_paper_trade: bool = True
     monitor_use_live_data: bool = True
+    active_profile_types: str = "conservative,aggressive"
+
+    def active_profile_type_set(self) -> set[str]:
+        return {p.strip() for p in self.active_profile_types.split(",") if p.strip()}
 
 
 @lru_cache
