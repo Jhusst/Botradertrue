@@ -1,0 +1,71 @@
+from enum import StrEnum
+
+
+class TradeDirection(StrEnum):
+    LONG = "LONG"
+    SHORT = "SHORT"
+    NO_TRADE = "NO_TRADE"
+
+
+class SetupGrade(StrEnum):
+    A = "A"
+    B = "B"
+    C = "C"
+
+
+class Timeframe(StrEnum):
+    M15 = "15m"
+    H1 = "1h"
+    H4 = "4h"
+    D1 = "1d"
+
+
+class SignalStatus(StrEnum):
+    PENDING = "PENDING"
+    WATCHING = "WATCHING"
+    ACTIVE = "ACTIVE"
+    ENTRY_HIT = "ENTRY_HIT"
+    EXPIRED = "EXPIRED"
+    INVALIDATED = "INVALIDATED"
+    CLOSED = "CLOSED"
+
+
+class AlertType(StrEnum):
+    NEW_SIGNAL = "NEW_SIGNAL"
+    ENTRY_APPROACHING = "ENTRY_APPROACHING"
+    ENTRY_NOW = "ENTRY_NOW"
+    PAPER_OPENED = "PAPER_OPENED"
+    TAKE_PROFIT = "TAKE_PROFIT"
+    STOP_LOSS = "STOP_LOSS"
+    SIGNAL_EXPIRED = "SIGNAL_EXPIRED"
+    SIGNAL_INVALIDATED = "SIGNAL_INVALIDATED"
+    AUTONOMOUS_ENTRY = "AUTONOMOUS_ENTRY"
+    AI_BLOCKED = "AI_BLOCKED"
+
+
+class PaperTradeStatus(StrEnum):
+    PENDING = "PENDING"
+    OPEN = "OPEN"
+    TP1_HIT = "TP1_HIT"
+    TP2_HIT = "TP2_HIT"
+    STOPPED = "STOPPED"
+    CLOSED = "CLOSED"
+    CANCELLED = "CANCELLED"
+
+
+class TradingMode(StrEnum):
+    PAPER = "PAPER"
+    LIVE = "LIVE"
+    BACKTEST = "BACKTEST"
+
+
+class AuditAction(StrEnum):
+    SIGNAL_GENERATED = "SIGNAL_GENERATED"
+    SIGNAL_REJECTED = "SIGNAL_REJECTED"
+    RISK_BLOCKED = "RISK_BLOCKED"
+    PAPER_OPENED = "PAPER_OPENED"
+    PAPER_CLOSED = "PAPER_CLOSED"
+    LIVE_BLOCKED = "LIVE_BLOCKED"
+    LIVE_ENABLED = "LIVE_ENABLED"
+    ALERT_SENT = "ALERT_SENT"
+    ENTRY_HIT = "ENTRY_HIT"

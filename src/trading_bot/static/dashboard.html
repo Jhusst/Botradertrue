@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trading Bot — Dashboard</title>
+  <style>
+    :root {
+      --bg: #0b0f14; --card: #151d2b; --border: #2a3548; --text: #e8edf4;
+      --muted: #8b9cb3; --green: #22c55e; --red: #ef4444; --yellow: #eab308;
+      --blue: #3b82f6; --urgent: #f97316; --conservative: #06b6d4; --aggressive: #a855f7;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 1rem; max-width: 1180px; margin: 0 auto; }
+    h1 { font-size: 1.4rem; }
+    .subtitle { color: var(--muted); font-size: 0.85rem; margin: 0.25rem 0 1.25rem; }
+    .top-bar { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin-bottom: 1.25rem; }
+    .portfolio { background: linear-gradient(135deg, #1a2744, #151d2b); border: 1px solid var(--border); border-radius: 14px; padding: 1rem 1.5rem; flex: 1; min-width: 220px; }
+    .portfolio .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase; }
+    .portfolio .amount { font-size: 2rem; font-weight: 700; color: var(--green); }
+    .profiles-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    @media (max-width: 900px) { .profiles-grid { grid-template-columns: 1fr; } }
+    .profile-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; }
+    .profile-card.conservative { border-top: 3px solid var(--conservative); }
+    .profile-card.aggressive { border-top: 3px solid var(--aggressive); }
+    .profile-header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 1rem; }
+    .profile-header h2 { font-size: 1.1rem; }
+    .profile-header .desc { color: var(--muted); font-size: 0.8rem; margin-top: 0.25rem; }
+    .balance-row { display: flex; gap: 0.5rem; align-items: center; margin: 0.75rem 0; }
+    .balance-row input { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.6rem; border-radius: 8px; width: 100px; }
+    .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-bottom: 1rem; }
+    .stat { background: var(--bg); border-radius: 8px; padding: 0.5rem; text-align: center; }
+    .stat .lbl { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+    .stat .val { font-size: 0.95rem; font-weight: 600; margin-top: 0.15rem; }
+    .signal-box { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem; margin-bottom: 0.75rem; transition: border-color 0.3s; }
+    .signal-box.urgent { border-color: var(--urgent); box-shadow: 0 0 12px rgba(249,115,22,0.25); }
+    .signal-box.expired { opacity: 0.55; border-color: var(--border); }
+    .signal-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.35rem; }
+    .long { color: var(--green); } .short { color: var(--red); }
+    .badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+    .badge.ok { background: rgba(34,197,94,0.2); color: var(--green); }
+    .badge.urgent { background: rgba(249,115,22,0.3); color: var(--urgent); animation: pulse 1.5s infinite; }
+    .badge.warn { background: rgba(234,179,8,0.2); color: var(--yellow); }
+    .badge.muted { background: rgba(139,156,179,0.15); color: var(--muted); }
+    .badge.danger { background: rgba(239,68,68,0.2); color: var(--red); }
+    @keyframes pulse { 50% { opacity: 0.7; } }
+    .signal-details { font-size: 0.8rem; color: var(--muted); line-height: 1.65; }
+    .signal-details strong { color: var(--text); }
+    .signal-meta { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.4rem 0; font-size: 0.72rem; }
+    .meta-chip { background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.45rem; color: var(--muted); }
+    .meta-chip.ttl { color: var(--yellow); border-color: rgba(234,179,8,0.3); }
+    .meta-chip.ttl.expired { color: var(--red); border-color: rgba(239,68,68,0.3); }
+    .entry-status { margin-top: 0.45rem; padding: 0.45rem 0.55rem; border-radius: 8px; font-size: 0.78rem; }
+    .entry-status.urgent { background: rgba(249,115,22,0.12); color: var(--urgent); font-weight: 600; }
+    .entry-status.wait { background: rgba(234,179,8,0.08); color: var(--yellow); }
+    .entry-status.ok { background: rgba(34,197,94,0.08); color: var(--green); }
+    .entry-status.bad { background: rgba(239,68,68,0.08); color: var(--red); }
+    .trade-levels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.45rem; margin: 0.65rem 0; }
+    @media (max-width: 600px) { .trade-levels { grid-template-columns: repeat(2, 1fr); } }
+    .level-box { border-radius: 10px; padding: 0.55rem 0.5rem; text-align: center; border: 2px solid transparent; }
+    .level-box .level-label { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.04em; font-weight: 700; opacity: 0.9; }
+    .level-box .level-value { font-size: 1.05rem; font-weight: 800; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
+    .level-box .level-sub { font-size: 0.62rem; margin-top: 0.15rem; opacity: 0.75; }
+    .level-box.entry { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.45); color: var(--blue); }
+    .level-box.sl { background: rgba(239,68,68,0.15); border-color: rgba(239,68,68,0.55); color: var(--red); }
+    .level-box.tp { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.45); color: var(--green); }
+    .level-box.tp2 { background: rgba(34,197,94,0.18); border-color: rgba(34,197,94,0.6); color: #4ade80; }
+    .leverage-banner { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0.55rem 0; padding: 0.65rem 0.85rem; border-radius: 10px; background: rgba(234,179,8,0.1); border: 2px solid rgba(234,179,8,0.45); flex-wrap: wrap; }
+    .leverage-banner .lev-label { font-size: 0.72rem; color: var(--yellow); text-transform: uppercase; font-weight: 700; }
+    .leverage-banner .lev-value { font-size: 1.6rem; font-weight: 900; color: var(--yellow); line-height: 1; }
+    .leverage-banner .lev-warn { font-size: 0.72rem; color: var(--muted); max-width: 220px; line-height: 1.4; }
+    .leverage-banner.high { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.5); }
+    .leverage-banner.high .lev-value { color: var(--red); }
+    .leverage-banner.high .lev-label { color: var(--red); }
+    .copy-btn { background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 5px; padding: 0.1rem 0.35rem; font-size: 0.58rem; cursor: pointer; margin-top: 0.25rem; opacity: 0.8; }
+    .copy-btn:hover { opacity: 1; }
+    .risk-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem; }
+    .risk-summary span strong { color: var(--text); }
+    .btn-row { display: flex; gap: 0.5rem; margin-top: 0.6rem; flex-wrap: wrap; }
+    button { border: none; border-radius: 8px; padding: 0.45rem 0.85rem; font-size: 0.8rem; cursor: pointer; font-weight: 600; }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-success { background: var(--green); color: #000; }
+    .btn-danger { background: var(--red); color: white; }
+    .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .section { margin-top: 1.5rem; }
+    .section h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    th, td { padding: 0.6rem; border-bottom: 1px solid var(--border); text-align: left; }
+    th { color: var(--muted); }
+    .empty { color: var(--muted); text-align: center; padding: 1.5rem; font-size: 0.85rem; }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+    .status-dot.on { background: var(--green); animation: pulse 2s infinite; }
+    .status-dot.off { background: var(--red); }
+    .refresh-note { color: var(--muted); font-size: 0.75rem; }
+    .live-indicator { color: var(--green); font-size: 0.7rem; font-weight: 600; }
+    .open-trade { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: 8px; padding: 0.6rem; margin-bottom: 0.5rem; font-size: 0.8rem; }
+    .markets-section { margin-bottom: 1.25rem; }
+    .markets-section h3 { font-size: 1rem; margin-bottom: 0.5rem; }
+    .markets-hint { color: var(--muted); font-size: 0.75rem; margin-bottom: 0.75rem; }
+    .markets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(155px, 1fr)); gap: 0.55rem; }
+    .market-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.7rem; cursor: pointer; transition: border-color 0.2s, transform 0.15s; }
+    .market-card:hover { transform: translateY(-1px); }
+    .market-card.crypto { border-top: 3px solid var(--blue); }
+    .market-card.precious_metal { border-top: 3px solid var(--yellow); }
+    .market-card.urgent { border-color: var(--urgent); box-shadow: 0 0 10px rgba(249,115,22,0.2); }
+    .market-card.has-signal { border-color: rgba(34,197,94,0.4); }
+    .market-card .m-name { font-weight: 700; font-size: 0.82rem; }
+    .market-card .m-price { font-size: 1.1rem; font-weight: 800; margin: 0.25rem 0; font-variant-numeric: tabular-nums; }
+    .market-card .m-status { font-size: 0.68rem; color: var(--muted); }
+    .market-card .m-status.hot { color: var(--urgent); font-weight: 700; }
+    .badge.crypto-tag { background: rgba(59,130,246,0.2); color: var(--blue); }
+    .badge.metal-tag { background: rgba(234,179,8,0.2); color: var(--yellow); }
+    .filter-bar { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    .filter-btn { background: var(--card); border: 1px solid var(--border); color: var(--muted); border-radius: 999px; padding: 0.35rem 0.85rem; font-size: 0.78rem; cursor: pointer; font-weight: 600; }
+    .filter-btn.active { background: var(--blue); border-color: var(--blue); color: white; }
+    .filter-btn.metal.active { background: var(--yellow); border-color: var(--yellow); color: #000; }
+    .signals-group-title { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin: 0.5rem 0; padding-bottom: 0.25rem; border-bottom: 1px solid var(--border); }
+    .storage-banner { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); border-radius: 10px; padding: 0.6rem 0.85rem; font-size: 0.75rem; color: var(--muted); margin-bottom: 1rem; }
+    .storage-banner strong { color: var(--blue); }
+    .profile-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .profile-tab { flex: 1; min-width: 140px; background: var(--card); border: 2px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem; cursor: pointer; transition: all 0.15s; }
+    .profile-tab.active { border-color: var(--blue); background: rgba(59,130,246,0.08); }
+    .profile-tab.conservative.active { border-color: var(--conservative); background: rgba(6,182,212,0.08); }
+    .profile-tab.aggressive.active { border-color: var(--aggressive); background: rgba(168,85,247,0.08); }
+    .profile-tab .tab-name { font-weight: 700; font-size: 0.9rem; }
+    .profile-tab .tab-bal { font-size: 1.15rem; font-weight: 800; color: var(--green); margin-top: 0.2rem; }
+    .profile-tab .tab-meta { font-size: 0.68rem; color: var(--muted); margin-top: 0.15rem; }
+    .trade-plan { margin: 0.55rem 0; padding: 0.65rem 0.75rem; border-radius: 10px; background: rgba(59,130,246,0.06); border: 1px solid rgba(59,130,246,0.2); font-size: 0.74rem; line-height: 1.55; }
+    .trade-plan h5 { font-size: 0.72rem; color: var(--blue); text-transform: uppercase; margin-bottom: 0.35rem; letter-spacing: 0.04em; }
+    .trade-plan ul { margin: 0; padding-left: 1.1rem; color: var(--muted); }
+    .trade-plan li { margin-bottom: 0.2rem; }
+    .trade-plan li strong { color: var(--text); }
+    .micro-warn { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.35); border-radius: 8px; padding: 0.5rem 0.65rem; font-size: 0.72rem; color: var(--yellow); margin-bottom: 0.65rem; }
+    .toast { position: fixed; bottom: 1.25rem; right: 1.25rem; background: var(--card); border: 1px solid var(--green); color: var(--text); padding: 0.65rem 1rem; border-radius: 10px; font-size: 0.82rem; z-index: 999; opacity: 0; transform: translateY(10px); transition: all 0.25s; pointer-events: none; max-width: 320px; }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    .loading-bar { height: 2px; background: var(--border); border-radius: 2px; margin-bottom: 0.75rem; overflow: hidden; }
+    .loading-bar .fill { height: 100%; background: var(--blue); width: 0%; transition: width 0.3s; }
+    .broker-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: center; }
+    .broker-panel.connected { border-color: rgba(34,197,94,0.4); }
+    .broker-panel.autonomous-on { border-color: rgba(168,85,247,0.5); background: rgba(168,85,247,0.06); }
+    .auto-badge { display: inline-block; padding: 0.12rem 0.45rem; border-radius: 999px; font-size: 0.65rem; font-weight: 700; background: rgba(168,85,247,0.25); color: #c084fc; margin-left: 0.35rem; }
+    .broker-panel .bp-title { font-size: 0.82rem; font-weight: 700; }
+    .broker-panel .bp-meta { font-size: 0.72rem; color: var(--muted); margin-top: 0.2rem; line-height: 1.45; }
+    .broker-panel .bp-bal { font-size: 1.15rem; font-weight: 800; color: var(--green); }
+    .broker-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+    .markets-strip { display: flex; gap: 0.45rem; overflow-x: auto; padding-bottom: 0.35rem; scrollbar-width: thin; }
+    .markets-strip .market-card { min-width: 130px; flex: 0 0 auto; padding: 0.55rem; }
+    .markets-strip .market-card .m-price { font-size: 0.95rem; }
+    .section-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin-bottom: 0.5rem; }
+    .section-toggle h3 { margin: 0; }
+    .section-toggle .chev { color: var(--muted); font-size: 0.85rem; }
+    .section-body.collapsed { display: none; }
+    .signals-compact-grid { display: flex; flex-direction: column; gap: 0.45rem; }
+    .signal-compact { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .signal-compact.urgent { border-color: var(--urgent); }
+    .signal-compact.expired { opacity: 0.5; }
+    .signal-summary { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.55rem 0.7rem; cursor: pointer; font-size: 0.8rem; flex-wrap: wrap; }
+    .signal-summary:hover { background: rgba(255,255,255,0.02); }
+    .signal-summary .sum-left { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+    .signal-summary .sum-right { color: var(--muted); font-size: 0.72rem; white-space: nowrap; }
+    .signal-body { padding: 0 0.7rem 0.7rem; border-top: 1px solid var(--border); display: none; }
+    .signal-compact.expanded .signal-body { display: block; padding-top: 0.6rem; }
+    .signal-compact.expanded .signal-summary .chev-open { transform: rotate(180deg); }
+    .chev-open { display: inline-block; transition: transform 0.15s; color: var(--muted); }
+    .inline-levels { display: flex; gap: 0.35rem; flex-wrap: wrap; font-size: 0.68rem; margin: 0.45rem 0; }
+    .inline-levels span { padding: 0.15rem 0.4rem; border-radius: 5px; background: var(--card); border: 1px solid var(--border); }
+    .inline-levels .sl { color: var(--red); }
+    .inline-levels .tp { color: var(--green); }
+    .hide-expired-row { display: flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; color: var(--muted); margin-left: auto; }
+    .history-wrap details { background: var(--card); border-radius: 12px; padding: 0.5rem 0.75rem; }
+    .history-wrap summary { cursor: pointer; font-weight: 600; font-size: 0.85rem; padding: 0.35rem 0; }
+    .open-trades-compact .open-trade { padding: 0.5rem; margin-bottom: 0.35rem; }
+    .manual-row { display: flex; flex-wrap: wrap; gap: 0.45rem; align-items: center; margin-top: 0.45rem; padding: 0.5rem; background: rgba(59,130,246,0.06); border-radius: 8px; border: 1px solid rgba(59,130,246,0.2); }
+    .manual-row label { font-size: 0.72rem; color: var(--muted); }
+    .manual-row input[type=number] { width: 58px; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.3rem 0.4rem; border-radius: 6px; font-weight: 700; }
+    .manual-hint { font-size: 0.68rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.4; }
+    .badge.bot-tag { background: rgba(168,85,247,0.25); color: #c084fc; }
+    .badge.manual-tag { background: rgba(59,130,246,0.25); color: var(--blue); }
+  </style>
+</head>
+<body>
+  <h1>Trading Bot</h1>
+  <p class="subtitle">Modo autónomo disponible · IA + monitor 24/7 · Sin garantía de ganancias</p>
+
+  <div class="top-bar">
+    <div class="portfolio">
+      <div class="label">Balance total (ambos perfiles)</div>
+      <div class="amount" id="portfolio-total">— USDT</div>
+    </div>
+    <div>
+      <span class="status-dot" id="monitor-dot"></span>
+      <span id="monitor-status">Monitor</span> ·
+      <span id="telegram-status">Telegram</span> ·
+      <span class="live-indicator" id="live-indicator">● LIVE</span><br>
+      <span class="refresh-note" id="last-update">—</span>
+      <span class="refresh-note" id="ttl-info"></span>
+    </div>
+  </div>
+
+  <div class="broker-panel" id="broker-panel">
+    <div>
+      <div class="bp-title">Broker Binance <span class="auto-badge" id="auto-badge" style="display:none">🤖 AUTÓNOMO</span></div>
+      <div class="bp-meta" id="broker-meta">Sin conectar — precios vía API pública</div>
+      <div class="bp-meta" id="auto-meta" style="margin-top:0.25rem"></div>
+    </div>
+    <div class="broker-actions">
+      <div class="bp-bal" id="broker-balance">—</div>
+      <button class="btn-ghost" onclick="loadBrokerStatus()">Actualizar</button>
+      <button class="btn-ghost" onclick="syncBrokerBalance()">Sync balance</button>
+    </div>
+  </div>
+
+  <div class="filter-bar" id="filter-bar">
+    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">Todos</button>
+    <button class="filter-btn" data-filter="crypto" onclick="setFilter('crypto')">₿ Cripto</button>
+    <button class="filter-btn metal" data-filter="precious_metal" onclick="setFilter('precious_metal')">🥇 Metales</button>
+    <label class="hide-expired-row"><input type="checkbox" id="hide-expired" checked onchange="toggleHideExpired()"> Ocultar caducadas</label>
+  </div>
+
+  <div class="markets-section">
+    <div class="section-toggle" onclick="toggleSection('markets-body')">
+      <h3>Mercados (<span id="markets-count">0</span>)</h3>
+      <span class="chev" id="markets-chev">▼</span>
+    </div>
+    <div class="section-body" id="markets-body">
+      <div class="markets-strip" id="markets-grid"></div>
+    </div>
+  </div>
+
+  <div class="storage-banner" id="storage-banner">
+    💾 Tus trades se guardan en <strong>trading_bot.db</strong> (tabla <strong>user_trades</strong>) en esta carpeta del proyecto.
+  </div>
+  <div class="loading-bar"><div class="fill" id="loading-fill"></div></div>
+  <div class="profile-tabs" id="profile-tabs"></div>
+  <div id="active-profile"></div>
+  <div class="toast" id="toast"></div>
+
+  <div class="section history-wrap">
+    <details>
+      <summary>Historial de trades (<span id="history-count">0</span>)</summary>
+      <div style="overflow-x:auto;margin-top:0.5rem">
+        <table>
+          <thead><tr><th>Fecha</th><th>Perfil</th><th>Par</th><th>Dir</th><th>Estado</th><th>P&L</th><th>Motivo</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="7" class="empty">Sin trades registrados</td></tr></tbody>
+        </table>
+      </div>
+    </details>
+  </div>
+
+  <script>
+    const API = window.location.origin;
+    let dashboardData = null;
+    let countdownTimer = null;
+    let signalFilter = "all";
+    let activeProfileId = null;
+    let isFetching = false;
+    let hideExpired = true;
+    let brokerExchangeLabel = "Bitunix";
+
+    function showToast(msg) {
+      const t = document.getElementById("toast");
+      t.textContent = msg;
+      t.classList.add("show");
+      setTimeout(() => t.classList.remove("show"), 2800);
+    }
+
+    function setLoading(on) {
+      document.getElementById("loading-fill").style.width = on ? "70%" : "0%";
+    }
+
+    function toggleSection(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("collapsed");
+      const chev = document.getElementById(id.replace("-body", "-chev"));
+      if (chev) chev.textContent = el.classList.contains("collapsed") ? "▶" : "▼";
+    }
+
+    function toggleHideExpired() {
+      hideExpired = document.getElementById("hide-expired").checked;
+      if (dashboardData) renderProfiles(dashboardData);
+    }
+
+    function toggleSignal(el) {
+      el.closest(".signal-compact")?.classList.toggle("expanded");
+    }
+
+    function setFilter(filter) {
+      signalFilter = filter;
+      document.querySelectorAll(".filter-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.filter === filter);
+      });
+      if (dashboardData) {
+        renderMarkets(dashboardData.markets || []);
+        renderProfiles(dashboardData);
+      }
+    }
+
+    function assetClassBadge(assetClass, label) {
+      const cls = assetClass === "precious_metal" ? "metal-tag" : "crypto-tag";
+      return `<span class="badge ${cls}">${label || (assetClass === "precious_metal" ? "Metal" : "Cripto")}</span>`;
+    }
+
+    function renderMarkets(markets) {
+      const grid = document.getElementById("markets-grid");
+      const filtered = signalFilter === "all"
+        ? markets
+        : markets.filter(m => m.asset_class === signalFilter);
+      if (!filtered.length) {
+        grid.innerHTML = '<div class="empty">Sin mercados en esta categoría</div>';
+        return;
+      }
+      document.getElementById("markets-count").textContent = filtered.length;
+      grid.innerHTML = filtered.map(m => `
+        <div class="market-card ${m.asset_class} ${m.urgent ? 'urgent' : ''} ${m.has_signal ? 'has-signal' : ''}"
+             onclick="setFilter('${m.asset_class}')" title="${m.display_name}">
+          <div class="m-name">${m.display_name.split("(")[0].trim()}</div>
+          <div class="m-price">${m.last_price ? "$" + m.last_price : "—"}</div>
+          <div class="m-status ${m.urgent ? 'hot' : ''}">${m.status_label}</div>
+        </div>`).join("");
+    }
+
+    function formatCountdown(seconds) {
+      if (seconds == null) return "—";
+      if (seconds <= 0) return "Caducada";
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = seconds % 60;
+      if (h > 0) return `${h}h ${m}m ${s}s`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function badgeForSignal(s) {
+      if (s.entry_action === "ENTER_NOW") return '<span class="badge urgent">ENTRAR AHORA</span>';
+      if (s.entry_action === "EXPIRED" || s.status === "EXPIRED") return '<span class="badge danger">Caducada</span>';
+      if (s.entry_action === "INVALIDATED") return '<span class="badge danger">Invalidada</span>';
+      if (s.status === "ACTIVE") return '<span class="badge ok">Activa</span>';
+      if (s.entry_action === "APPROACHING") return '<span class="badge warn">Cerca</span>';
+      if (s.status === "WATCHING") return '<span class="badge warn">Vigilando</span>';
+      return '<span class="badge muted">' + (s.status || "—") + '</span>';
+    }
+
+    function findSignal(signalId) {
+      if (!dashboardData) return null;
+      for (const p of dashboardData.profiles || []) {
+        const s = (p.signals || []).find(x => x.id === signalId);
+        if (s) return s;
+      }
+      return null;
+    }
+
+    function copySignalLevels(signalId) {
+      const s = findSignal(signalId);
+      if (!s) return showToast("Señal no encontrada");
+      const levInput = document.getElementById(`lev-${signalId}`);
+      const userLev = levInput ? levInput.value : s.recommended_leverage;
+      const text = [
+        `Par: ${s.symbol} ${s.direction}`,
+        `Entrada: ${s.entry_price}`,
+        `Stop Loss: ${s.stop_loss}`,
+        `TP1: ${s.take_profit_1}`,
+        `TP2: ${s.take_profit_2}`,
+        `Tu apalancamiento: ${userLev}x (sugerido ${s.recommended_leverage}x)`,
+      ].join("\n");
+      navigator.clipboard.writeText(text).then(() => showToast("Niveles copiados — pega en Bitunix"));
+    }
+
+    function copyText(text, btn) {
+      if (!text || text === "—") return;
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.textContent;
+        btn.textContent = "✓";
+        setTimeout(() => { btn.textContent = orig; }, 1200);
+      });
+    }
+
+    function renderTradeLevels(s) {
+      const copy = (v) => v && v !== "—"
+        ? `<button class="copy-btn" onclick="copyText('${v}', this)">Copiar</button>` : "";
+      return `<div class="trade-levels">
+        <div class="level-box entry">
+          <div class="level-label">Entrada</div>
+          <div class="level-value">${s.entry_price || "—"}</div>
+          <div class="level-sub">Precio vivo: ${s.last_price || "—"}</div>
+          ${copy(s.entry_price)}
+        </div>
+        <div class="level-box sl">
+          <div class="level-label">⛔ Stop Loss</div>
+          <div class="level-value">${s.stop_loss || "—"}</div>
+          <div class="level-sub">NO mover · pérdida máx $${s.max_loss_usdt || "—"}</div>
+          ${copy(s.stop_loss)}
+        </div>
+        <div class="level-box tp">
+          <div class="level-label">✓ Take Profit 1</div>
+          <div class="level-value">${s.take_profit_1 || "—"}</div>
+          <div class="level-sub">Parcial / asegurar</div>
+          ${copy(s.take_profit_1)}
+        </div>
+        <div class="level-box tp2">
+          <div class="level-label">✓✓ Take Profit 2</div>
+          <div class="level-value">${s.take_profit_2 || "—"}</div>
+          <div class="level-sub">Objetivo +$${s.estimated_gain_tp2_usdt || "—"}</div>
+          ${copy(s.take_profit_2)}
+        </div>
+      </div>`;
+    }
+
+    function renderLeverageBanner(leverage, maxLev) {
+      const lev = leverage || 1;
+      const cap = maxLev || lev;
+      const isHigh = lev >= 15;
+      return `<div class="leverage-banner ${isHigh ? "high" : ""}">
+        <div>
+          <div class="lev-label">Apalancamiento sugerido (bot)</div>
+          <div class="lev-value">${lev}x</div>
+        </div>
+        <div class="lev-warn">
+          Usa <strong>${lev}x</strong> (máx perfil: ${cap}x). ${isHigh
+            ? "⚠️ Muy alto — liquidación cercana si el precio va en contra."
+            : "No subas a 20x+ por FOMO. El riesgo real lo marca el SL."}
+        </div>
+      </div>`;
+    }
+
+    function renderTradePlan(plan) {
+      if (!plan) return "";
+      return `<div class="trade-plan">
+        <h5>📋 Plan de salida</h5>
+        <ul>
+          <li><strong>Ventana entrada:</strong> ${plan.entry_window}${plan.entry_valid_until ? " (hasta " + new Date(plan.entry_valid_until).toLocaleString("es") + ")" : ""}</li>
+          <li><strong>TP1:</strong> ${plan.tp1_rule}</li>
+          <li><strong>TP2:</strong> ${plan.tp2_rule}</li>
+          <li><strong>Stop loss:</strong> ${plan.sl_rule}</li>
+          <li><strong>Tiempo máx:</strong> ${plan.max_hold}</li>
+          ${plan.invalidation ? "<li><strong>Invalida si:</strong> " + plan.invalidation + "</li>" : ""}
+        </ul>
+      </div>`;
+    }
+
+    function entryStatusClass(s) {
+      if (s.entry_urgent) return "urgent";
+      if (s.entry_action === "EXPIRED" || s.entry_action === "INVALIDATED") return "bad";
+      if (s.status === "ACTIVE") return "ok";
+      return "wait";
+    }
+
+    function renderManualRow(s, profileId) {
+      const expired = s.entry_action === "EXPIRED" || s.status === "EXPIRED";
+      if (expired) return "";
+      const maxLev = s.max_leverage_profile || 20;
+      const recLev = s.recommended_leverage || 10;
+      const copyBtn = `<button class="btn-ghost" onclick="event.stopPropagation();copySignalLevels(${s.id})">Copiar niveles</button>`;
+      if (s.manual_trade_open) {
+        return `<div class="manual-hint">✓ Tu trade manual registrado. El bot puede operar aparte. ${copyBtn}</div>`;
+      }
+      if (!s.can_enter_manual) {
+        return `<div class="manual-row" onclick="event.stopPropagation()">${copyBtn}<span style="font-size:0.72rem;color:var(--muted)">Solo consulta — aún no es momento de entrar</span></div>`;
+      }
+      return `<div class="manual-row" onclick="event.stopPropagation()">
+        <label>Tu apalancamiento:</label>
+        <input type="number" id="lev-${s.id}" value="${recLev}" min="1" max="${maxLev}" step="1" title="Máx perfil ${maxLev}x" />
+        <span style="font-size:0.72rem;color:var(--muted)">x (sugerido ${recLev}x)</span>
+        ${copyBtn}
+        <button class="btn-success" onclick="enterTrade(${s.id},${profileId},'lev-${s.id}')">Registrar manual (Bitunix)</button>
+      </div>
+      <div class="manual-hint">El bot autónomo no bloquea la consulta. Opera en Bitunix con el lev que quieras — mismos SL/TP.</div>`;
+    }
+
+    function renderSignal(s, profileId) {
+      const urgent = s.entry_urgent;
+      const expired = s.entry_action === "EXPIRED" || s.status === "EXPIRED" || (s.expires_in_seconds != null && s.expires_in_seconds <= 0);
+      const dirClass = s.direction === "LONG" ? "long" : "short";
+      const ttlClass = expired ? "ttl expired" : "ttl";
+      const badges = [];
+      if (s.bot_trade_open) badges.push('<span class="badge bot-tag">🤖 Bot</span>');
+      if (s.manual_trade_open) badges.push('<span class="badge manual-tag">Tú manual</span>');
+      const entered = badges.join(" ");
+      const expanded = urgent || s.can_enter_manual || s.entry_action === "APPROACHING" ? "expanded" : "";
+
+      return `<div class="signal-compact ${urgent ? 'urgent' : ''} ${expired ? 'expired' : ''} ${expanded}" data-signal-id="${s.id}">
+        <div class="signal-summary" onclick="toggleSignal(this)">
+          <div class="sum-left">
+            <span class="chev-open">▼</span>
+            <strong class="${dirClass}">${(s.display_name || s.symbol).split("(")[0].trim()} ${s.direction}</strong>
+            ${badgeForSignal(s)} ${entered}
+            <span class="inline-levels">
+              <span>E ${s.entry_price || "—"}</span>
+              <span class="sl">SL ${s.stop_loss || "—"}</span>
+              <span class="tp">TP ${s.take_profit_1 || "—"}</span>
+              <span>${s.recommended_leverage || "—"}x</span>
+            </span>
+          </div>
+          <div class="sum-right">
+            <span class="meta-chip ${ttlClass}" data-expires-at="${s.expires_at || ''}">
+              ⏱ <strong class="ttl-countdown">${s.expires_label || formatCountdown(s.expires_in_seconds)}</strong>
+            </span>
+          </div>
+        </div>
+        <div class="signal-body">
+          ${renderTradeLevels(s)}
+          ${renderLeverageBanner(s.recommended_leverage, s.max_leverage_profile)}
+          ${renderTradePlan(s.trade_plan)}
+          <div class="risk-summary">
+            <span>Riesgo: <strong>${s.risk_percent}%</strong> ($${s.risk_usdt || "—"})</span>
+            <span>Margen sugerido: <strong>$${s.margin_required || "—"}</strong> @ ${s.recommended_leverage || "—"}x</span>
+            ${s.distance_percent != null ? `<span>Dist: <strong>${s.distance_percent.toFixed(2)}%</strong></span>` : ""}
+          </div>
+          <div class="entry-status ${entryStatusClass(s)}">${s.entry_label || "—"}</div>
+          ${renderManualRow(s, profileId)}
+        </div>
+      </div>`;
+    }
+
+    function sortSignals(signals) {
+      const prio = { ENTER_NOW: 0, ACTIVE: 1, APPROACHING: 2, WATCHING: 3, WAITING: 4, EXPIRED: 9 };
+      return [...signals].sort((a, b) => (prio[a.entry_action] ?? 5) - (prio[b.entry_action] ?? 5));
+    }
+
+    function renderSignalsGrouped(signals, profileId) {
+      let filtered = signals.filter(s => signalFilter === "all" || s.asset_class === signalFilter);
+      if (hideExpired) {
+        filtered = filtered.filter(s => {
+          const exp = s.entry_action === "EXPIRED" || s.status === "EXPIRED" || (s.expires_in_seconds != null && s.expires_in_seconds <= 0);
+          return !exp;
+        });
+      }
+      filtered = sortSignals(filtered);
+      if (!filtered.length) {
+        return `<div class="empty">Sin señales ${signalFilter === "crypto" ? "de cripto" : signalFilter === "precious_metal" ? "de metales" : ""} ahora. El bot sigue escaneando.</div>`;
+      }
+      const crypto = filtered.filter(s => s.asset_class === "crypto");
+      const metals = filtered.filter(s => s.asset_class === "precious_metal");
+      let html = "";
+      if (signalFilter === "all" && crypto.length) {
+        html += `<div class="signals-group-title">₿ Cripto (${crypto.length})</div>`;
+        html += crypto.map(s => renderSignal(s, profileId)).join("");
+      }
+      if (signalFilter === "all" && metals.length) {
+        html += `<div class="signals-group-title">🥇 Metales (${metals.length})</div>`;
+        html += metals.map(s => renderSignal(s, profileId)).join("");
+      }
+      if (signalFilter !== "all") {
+        html += filtered.map(s => renderSignal(s, profileId)).join("");
+      }
+      return html;
+    }
+
+    function renderProfile(p) {
+      const colorClass = p.profile_type;
+      const signals = (p.signals || []).filter(s => !["CLOSED"].includes(s.status));
+      const openTrades = p.open_trades || [];
+      const filteredCount = signals.filter(s => signalFilter === "all" || s.asset_class === signalFilter).length;
+
+      const signalsHtml = renderSignalsGrouped(signals, p.id);
+
+      const openHtml = openTrades.map(t => `
+        <div class="open-trade">
+          <strong>${t.symbol} ${t.direction}</strong> · Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString("es") : "—"}
+          ${renderTradeLevels(t)}
+          ${renderLeverageBanner(t.leverage, p.max_leverage)}
+          ${renderTradePlan(t.trade_plan)}
+          <div class="btn-row">
+            <button class="btn-danger" onclick="closeTrade(${t.id})">Cerrar trade (registrar P&L)</button>
+          </div>
+        </div>`).join("");
+
+      const microWarn = p.is_micro_capital
+        ? `<div class="micro-warn">⚠️ Capital micro (~$${p.balance_usdt}): cada trade arriesga centavos. Prioriza no perder el 100%.</div>` : "";
+
+      return `<div class="profile-card ${colorClass}">
+        <div class="profile-header">
+          <div>
+            <h2>${p.name}</h2>
+            <div class="desc">${p.description} · Lev máx <strong>${p.max_leverage}x</strong></div>
+          </div>
+        </div>
+        ${microWarn}
+        <div class="balance-row">
+          <label>Balance real:</label>
+          <input type="number" id="bal-${p.id}" value="${parseFloat(p.balance_usdt)}" step="0.01" min="0.01" />
+          <span>USDT</span>
+          <button class="btn-ghost" onclick="updateBalance(${p.id},'bal-${p.id}')">Guardar</button>
+        </div>
+        <div class="stats-row">
+          <div class="stat"><div class="lbl">Equity</div><div class="val">$${p.equity_usdt}</div></div>
+          <div class="stat"><div class="lbl">P&L realizado</div><div class="val" style="color:${parseFloat(p.realized_pnl_usdt)>=0?'var(--green)':'var(--red)'}">$${p.realized_pnl_usdt}</div></div>
+          <div class="stat"><div class="lbl">Riesgo A/B</div><div class="val">${p.risk_setup_a}% / ${p.risk_setup_b}%</div></div>
+        </div>
+        <h4 style="font-size:0.85rem;margin-bottom:0.35rem">Abiertos (${openTrades.length})</h4>
+        <div class="open-trades-compact">${openHtml || '<div class="empty" style="padding:0.35rem;font-size:0.75rem">Ninguno</div>'}</div>
+        <h4 style="font-size:0.85rem;margin:0.6rem 0 0.35rem">Señales (${filteredCount}) — consulta y entrada manual</h4>
+        <div class="signals-compact-grid">${signalsHtml}</div>
+      </div>`;
+    }
+
+    function renderProfileTabs(profiles) {
+      const tabs = document.getElementById("profile-tabs");
+      if (!profiles.length) { tabs.innerHTML = ""; return; }
+      if (!activeProfileId) activeProfileId = profiles[0].id;
+      tabs.innerHTML = profiles.map(p => `
+        <div class="profile-tab ${p.profile_type} ${p.id === activeProfileId ? 'active' : ''}"
+             onclick="selectProfile(${p.id})">
+          <div class="tab-name">${p.name}</div>
+          <div class="tab-bal">$${p.equity_usdt}</div>
+          <div class="tab-meta">${p.open_trades_count} abierto(s) · Lev ${p.max_leverage}x</div>
+        </div>`).join("");
+    }
+
+    function selectProfile(id) {
+      activeProfileId = id;
+      if (dashboardData) {
+        renderProfileTabs(dashboardData.profiles);
+        renderActiveProfile(dashboardData);
+      }
+    }
+
+    function renderActiveProfile(data) {
+      const p = (data.profiles || []).find(x => x.id === activeProfileId) || data.profiles[0];
+      if (!p) return;
+      const el = document.getElementById("active-profile");
+      const signals = (p.signals || []).map(s => ({...s, max_leverage_profile: p.max_leverage}));
+      el.innerHTML = renderProfile({...p, signals});
+    }
+
+    function renderProfiles(data) {
+      renderProfileTabs(data.profiles || []);
+      renderActiveProfile(data);
+    }
+
+    function tickCountdowns() {
+      const now = Date.now();
+      document.querySelectorAll("[data-expires-at]").forEach(el => {
+        const iso = el.dataset.expiresAt;
+        if (!iso) return;
+        const expires = new Date(iso).getTime();
+        const secs = Math.max(0, Math.floor((expires - now) / 1000));
+        const label = el.querySelector(".ttl-countdown");
+        if (label) {
+          label.textContent = formatCountdown(secs);
+          if (secs <= 0) {
+            el.classList.add("expired");
+            label.textContent = "Caducada";
+          }
+        }
+      });
+    }
+
+    async function updateBalance(profileId, inputId) {
+      const val = parseFloat(document.getElementById(inputId).value);
+      if (!val || val <= 0) return alert("Balance inválido");
+      const res = await fetch(`${API}/api/v1/profiles/${profileId}/balance`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ balance_usdt: val }),
+      });
+      if (res.ok) { showToast("Balance actualizado"); loadDashboardLite(true); }
+      else showToast("Error al guardar balance");
+    }
+
+    async function enterTrade(signalId, profileId, levInputId) {
+      const levEl = levInputId ? document.getElementById(levInputId) : null;
+      const leverage = levEl ? parseInt(levEl.value, 10) : null;
+      if (levEl && (!leverage || leverage < 1)) return showToast("Apalancamiento inválido");
+      showToast("Registrando tu entrada manual…");
+      const btn = event?.target;
+      if (btn) { btn.disabled = true; btn.textContent = "Guardando…"; }
+      const res = await fetch(`${API}/api/v1/user-trades/enter`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          signal_id: signalId,
+          profile_id: profileId,
+          leverage: leverage,
+          manual_only: true,
+          execute_on_broker: false,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.message || `✅ Manual ${data.leverage}x guardado`);
+        await loadDashboardLite(true);
+      } else {
+        showToast("Error: " + (data.detail || "No se pudo registrar"));
+        if (btn) { btn.disabled = false; btn.textContent = "Registrar manual (Bitunix)"; }
+      }
+    }
+
+    async function closeTrade(tradeId) {
+      const pnl = prompt("¿Cuánto ganaste o perdiste en USDT? (negativo si perdiste, ej: -0.30 o 0.50)");
+      if (pnl === null) return;
+      const pnlNum = parseFloat(pnl);
+      if (isNaN(pnlNum)) return alert("Número inválido");
+      const reason = pnlNum >= 0 ? "TAKE_PROFIT" : "STOP_LOSS";
+      const res = await fetch(`${API}/api/v1/user-trades/${tradeId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pnl_usdt: pnlNum, close_reason: reason }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Cerrado. P&L: $${pnlNum} · Balance: $${data.new_balance}`);
+        await loadDashboardLite(true);
+      } else showToast(data.detail || "Error al cerrar");
+    }
+
+    function applyDashboardData(data, fullPrices) {
+      dashboardData = data;
+      document.getElementById("portfolio-total").textContent = `$${data.portfolio_total_usdt} USDT`;
+      document.getElementById("monitor-dot").className = "status-dot " + (data.monitor.running ? "on" : "off");
+      document.getElementById("monitor-status").textContent = data.monitor.running ? "Monitor activo" : "Monitor detenido";
+      document.getElementById("telegram-status").textContent = data.telegram_configured ? "Telegram OK" : "Telegram sin config";
+      const mode = fullPrices ? "precios en vivo" : "modo rápido";
+      document.getElementById("last-update").textContent = `Actualizado (${mode}) · `;
+      document.getElementById("ttl-info").textContent = "Señales caducan en " + (data.signal_ttl_hours || 4) + "h";
+      if (data.storage) {
+        document.getElementById("storage-banner").innerHTML =
+          `💾 Trades en <strong>${data.storage.database_file}</strong> → <strong>${data.storage.trades_table}</strong>`;
+      }
+      if (data.broker) {
+        brokerExchangeLabel = data.broker.enabled && data.broker.api_configured ? "Binance" : "Bitunix";
+        const bp = document.getElementById("broker-panel");
+        const flags = [
+          data.broker.enabled ? "ON" : "OFF",
+          data.broker.auto_execute ? "auto-click" : "manual",
+          data.broker.testnet ? "testnet" : "mainnet",
+        ].join(" · ");
+        document.getElementById("broker-meta").textContent =
+          `Broker ${flags}${!data.broker.live_mode ? " · LIVE bloqueado" : ""}`;
+        if (data.broker.enabled) bp.classList.add("connected");
+      }
+      if (data.autonomous) {
+        const badge = document.getElementById("auto-badge");
+        const bp = document.getElementById("broker-panel");
+        badge.style.display = data.autonomous.enabled ? "inline-block" : "none";
+        bp.classList.toggle("autonomous-on", data.autonomous.enabled);
+        document.getElementById("auto-meta").textContent = data.autonomous.enabled
+          ? `🤖 Bot opera solo · IA ${data.autonomous.ai_enabled ? data.autonomous.ai_gate ? "("+data.autonomous.ai_min_verdict+"+)" : "off" : "desactivada"} · mín $${data.autonomous.min_balance_usdt}`
+          : "Modo manual — activa AUTONOMOUS_TRADING_ENABLED en .env";
+      }
+      renderMarkets(data.markets || []);
+      renderProfiles(data);
+      const hist = data.trade_history || [];
+      document.getElementById("history-count").textContent = hist.length;
+      const tbody = document.getElementById("history-body");
+      if (!hist.length) {
+        tbody.innerHTML = '<tr><td colspan="7" class="empty">Cuando entres a un trade, aparecerá aquí</td></tr>';
+      } else {
+        tbody.innerHTML = hist.map(t => {
+          const pnl = t.pnl_usdt ? `$${t.pnl_usdt}` : "—";
+          const pnlColor = t.pnl_usdt && parseFloat(t.pnl_usdt) < 0 ? "var(--red)" : "var(--green)";
+          const profile = (data.profiles || []).find(p => p.id === t.profile_id);
+          return `<tr>
+            <td>${t.opened_at ? new Date(t.opened_at).toLocaleString("es") : "—"}</td>
+            <td>${profile ? profile.name : t.profile_id}</td>
+            <td>${t.symbol}</td>
+            <td class="${t.direction==='LONG'?'long':'short'}">${t.direction}</td>
+            <td>${t.status}</td>
+            <td style="color:${pnlColor}">${pnl}</td>
+            <td>${t.close_reason || "—"}</td>
+          </tr>`;
+        }).join("");
+      }
+      tickCountdowns();
+    }
+
+    async function loadDashboardLite(force) {
+      if (isFetching && !force) return;
+      isFetching = true;
+      setLoading(true);
+      try {
+        const res = await fetch(`${API}/api/v1/dashboard/lite`);
+        if (res.ok) applyDashboardData(await res.json(), false);
+      } catch (e) { console.error(e); }
+      finally { isFetching = false; setLoading(false); }
+    }
+
+    async function loadDashboardFull() {
+      try {
+        const res = await fetch(`${API}/api/v1/dashboard/data`);
+        if (res.ok) applyDashboardData(await res.json(), true);
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadBrokerStatus() {
+      try {
+        const res = await fetch(`${API}/api/v1/broker/status`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const acc = data.account || {};
+        document.getElementById("broker-balance").textContent =
+          acc.connected && acc.available_balance ? `$${acc.available_balance}` : "—";
+        const pos = (acc.positions || []).length;
+        document.getElementById("broker-meta").textContent = acc.connected
+          ? `${acc.message} · ${pos} posición(es) · ${data.can_execute ? "Auto-trade listo" : data.execute_reason}`
+          : (acc.message || data.note);
+        document.getElementById("broker-panel").classList.toggle("connected", !!acc.connected);
+      } catch (e) { console.error(e); }
+    }
+
+    async function syncBrokerBalance() {
+      if (!activeProfileId) return showToast("Selecciona un perfil");
+      const res = await fetch(`${API}/api/v1/broker/sync-balance`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ profile_id: activeProfileId }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`Balance sync: $${data.balance_usdt}`);
+        loadDashboardLite(true);
+      } else showToast(data.detail || "Sync falló — activa SYNC_BALANCE_FROM_BROKER");
+    }
+
+    loadDashboardFull();
+    loadBrokerStatus();
+    setInterval(loadDashboardLite, 2000);
+    setInterval(loadDashboardFull, 20000);
+    setInterval(loadBrokerStatus, 30000);
+    countdownTimer = setInterval(tickCountdowns, 1000);
+  </script>
+</body>
+</html>
