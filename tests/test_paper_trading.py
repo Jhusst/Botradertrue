@@ -1,7 +1,7 @@
 from decimal import Decimal
 
 from trading_bot.core.enums import PaperTradeStatus, SetupGrade, TradeDirection
-from trading_bot.modules.paper_trading.simulator import PaperTradingSimulator
+from trading_bot.features.trades.paper.simulator import PaperTradingSimulator
 from trading_bot.schemas.signal import SignalCreate
 
 

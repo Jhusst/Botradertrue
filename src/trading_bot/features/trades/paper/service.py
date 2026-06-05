@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.core.enums import PaperTradeStatus, TradeDirection
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.models.trade import PaperTrade
-from trading_bot.modules.paper_trading.simulator import PaperTradingSimulator
+from trading_bot.features.trades.paper.simulator import PaperTradingSimulator
 from trading_bot.schemas.signal import SignalCreate
 
 

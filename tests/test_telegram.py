@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from trading_bot.modules.telegram_alerts.notifier import TelegramNotifier
+from trading_bot.features.alerts.telegram import TelegramNotifier
 from trading_bot.schemas.signal import SignalCreate
 
 

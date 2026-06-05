@@ -4,8 +4,8 @@ import pandas as pd
 
 from trading_bot.core.asset_catalog import get_asset_info, quantize_price
 from trading_bot.core.enums import SetupGrade, TradeDirection
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext, StrategyOutput
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import TrendPullbackMVPStrategy
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext, StrategyOutput
+from trading_bot.features.signals.strategies.trend_pullback_mvp import TrendPullbackMVPStrategy
 
 
 class PreciousMetalsMVPStrategy(TrendPullbackMVPStrategy):

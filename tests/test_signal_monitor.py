@@ -9,7 +9,7 @@ from trading_bot.config.settings import Settings
 from trading_bot.core.enums import AlertType, SignalStatus, TradeDirection
 from trading_bot.db.base import Base
 from trading_bot.db.models import AlertLog, PaperTrade, Signal  # noqa: F401
-from trading_bot.modules.signal_monitor.service import SignalMonitorService
+from trading_bot.features.signals.monitor.service import SignalMonitorService
 
 
 @pytest.fixture
@@ -125,7 +125,7 @@ async def test_scan_creates_signal_with_mock(monitor_session, monitor_settings) 
     service.notifier.send_raw = AsyncMock(return_value=True)
     service.price_feed.get_market_data = MagicMock(
         return_value=__import__(
-            "trading_bot.modules.data_collector.ccxt_client", fromlist=["DataCollector"]
+            "trading_bot.infrastructure.market_data.ccxt_client", fromlist=["DataCollector"]
         ).DataCollector.generate_trending_bullish_data()
     )
 

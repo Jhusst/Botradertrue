@@ -2,10 +2,10 @@ from decimal import Decimal
 
 from trading_bot.core.asset_catalog import get_asset_info
 from trading_bot.core.enums import SetupGrade, TradeDirection
-from trading_bot.modules.position_sizer import PositionSizer
-from trading_bot.modules.risk_manager import RiskManager
-from trading_bot.modules.strategy_engine.precious_metals_mvp import PreciousMetalsMVPStrategy
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import (
+from trading_bot.features.signals.risk import PositionSizer
+from trading_bot.features.signals.risk import RiskManager
+from trading_bot.features.signals.strategies.precious_metals_mvp import PreciousMetalsMVPStrategy
+from trading_bot.features.signals.strategies.trend_pullback_mvp import (
     MarketContext,
     StrategyOutput,
     TrendPullbackMVPStrategy,

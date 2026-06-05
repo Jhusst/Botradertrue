@@ -178,6 +178,13 @@
     .manual-hint { font-size: 0.68rem; color: var(--muted); margin-top: 0.35rem; line-height: 1.4; }
     .badge.bot-tag { background: rgba(168,85,247,0.25); color: #c084fc; }
     .badge.manual-tag { background: rgba(59,130,246,0.25); color: var(--blue); }
+    .auto-trades-panel { background: var(--card); border: 1px solid rgba(168,85,247,0.35); border-radius: 12px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; }
+    .auto-trades-panel h3 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #c084fc; }
+    .pos-row, .paper-row { font-size: 0.78rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
+    .pos-row:last-child, .paper-row:last-child { border-bottom: none; }
+    .source-auto { color: #c084fc; font-weight: 700; }
+    .source-manual { color: var(--blue); }
+    .source-paper { color: var(--yellow); }
   </style>
 </head>
 <body>
@@ -229,6 +236,13 @@
     </div>
   </div>
 
+  <div class="auto-trades-panel" id="auto-trades-panel">
+    <h3>🤖 Trades automáticos y posiciones Binance</h3>
+    <div id="binance-positions" class="bp-meta">Cargando posiciones…</div>
+    <div id="auto-trades-open" style="margin-top:0.4rem"></div>
+    <div id="paper-trades-open" style="margin-top:0.35rem"></div>
+  </div>
+
   <div class="storage-banner" id="storage-banner">
     💾 Tus trades se guardan en <strong>trading_bot.db</strong> (tabla <strong>user_trades</strong>) en esta carpeta del proyecto.
   </div>
@@ -242,8 +256,8 @@
       <summary>Historial de trades (<span id="history-count">0</span>)</summary>
       <div style="overflow-x:auto;margin-top:0.5rem">
         <table>
-          <thead><tr><th>Fecha</th><th>Perfil</th><th>Par</th><th>Dir</th><th>Estado</th><th>P&L</th><th>Motivo</th></tr></thead>
-          <tbody id="history-body"><tr><td colspan="7" class="empty">Sin trades registrados</td></tr></tbody>
+          <thead><tr><th>Fecha</th><th>Origen</th><th>Perfil</th><th>Par</th><th>Dir</th><th>Estado</th><th>P&L</th><th>Motivo</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="8" class="empty">Sin trades registrados</td></tr></tbody>
         </table>
       </div>
     </details>
@@ -742,11 +756,15 @@
       }
       renderMarkets(data.markets || []);
       renderProfiles(data);
+      renderAutoTradesPanel(data);
       const hist = data.trade_history || [];
       document.getElementById("history-count").textContent = hist.length;
       const tbody = document.getElementById("history-body");
+      const sourceLabel = (s) => s === "auto" ? '<span class="source-auto">🤖 Auto</span>'
+        : s === "paper" ? '<span class="source-paper">📝 Paper</span>'
+        : '<span class="source-manual">👤 Manual</span>';
       if (!hist.length) {
-        tbody.innerHTML = '<tr><td colspan="7" class="empty">Cuando entres a un trade, aparecerá aquí</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" class="empty">Cuando el bot o tú entren, aparecerán aquí</td></tr>';
       } else {
         tbody.innerHTML = hist.map(t => {
           const pnl = t.pnl_usdt ? `$${t.pnl_usdt}` : "—";
@@ -754,6 +772,7 @@
           const profile = (data.profiles || []).find(p => p.id === t.profile_id);
           return `<tr>
             <td>${t.opened_at ? new Date(t.opened_at).toLocaleString("es") : "—"}</td>
+            <td>${sourceLabel(t.source)}</td>
             <td>${profile ? profile.name : t.profile_id}</td>
             <td>${t.symbol}</td>
             <td class="${t.direction==='LONG'?'long':'short'}">${t.direction}</td>
@@ -784,6 +803,36 @@
       } catch (e) { console.error(e); }
     }
 
+    function renderAutoTradesPanel(data, brokerPositions) {
+      const autoOpen = data.auto_trades_open || [];
+      const paper = (data.paper_trades || []).filter(p => ["OPEN", "PENDING", "TP1_HIT"].includes(p.status));
+      const posEl = document.getElementById("binance-positions");
+      const autoEl = document.getElementById("auto-trades-open");
+      const paperEl = document.getElementById("paper-trades-open");
+
+      if (brokerPositions && brokerPositions.length) {
+        posEl.innerHTML = "<strong>Binance en vivo:</strong><br>" + brokerPositions.map(p =>
+          `<div class="pos-row">${p.symbol} ${(p.side || "").toUpperCase()} · ${p.contracts} contratos · entrada ${p.entry_price || "—"} · PnL ${p.unrealized_pnl || "—"}</div>`
+        ).join("");
+      } else {
+        posEl.textContent = "Binance: sin posiciones abiertas ahora.";
+      }
+
+      autoEl.innerHTML = autoOpen.length
+        ? "<strong>Bot (DB):</strong> " + autoOpen.map(t =>
+          `<div class="pos-row">${t.symbol} ${t.direction} ${t.leverage}x · E ${t.entry_price} · SL ${t.stop_loss}</div>`
+        ).join("")
+        : "";
+
+      paperEl.innerHTML = paper.length
+        ? "<strong>Paper automático:</strong> " + paper.map(p =>
+          `<div class="paper-row">${p.symbol} ${p.direction} · ${p.status}</div>`
+        ).join("")
+        : (data.autonomous && !data.autonomous.enabled ? "<span class='bp-meta'>Paper auto activo si AUTO_PAPER_TRADE=true</span>" : "");
+    }
+
+    let lastBrokerPositions = [];
+
     async function loadBrokerStatus() {
       try {
         const res = await fetch(`${API}/api/v1/broker/status`);
@@ -797,6 +846,8 @@
           ? `${acc.message} · ${pos} posición(es) · ${data.can_execute ? "Auto-trade listo" : data.execute_reason}`
           : (acc.message || data.note);
         document.getElementById("broker-panel").classList.toggle("connected", !!acc.connected);
+        lastBrokerPositions = acc.positions || [];
+        if (dashboardData) renderAutoTradesPanel(dashboardData, lastBrokerPositions);
       } catch (e) { console.error(e); }
     }
 

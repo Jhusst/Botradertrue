@@ -1,4 +1,5 @@
-from trading_bot.modules.ai_chart_analyzer.analyzer import AIAnalysisResult, AIChartAnalyzer
-from trading_bot.modules.ai_chart_analyzer.behavior import SYSTEM_BEHAVIOR
+"""Shim de compatibilidad — usar trading_bot.features.ai."""
+from trading_bot.features.ai.analyzer import AIAnalysisResult, AIChartAnalyzer
+from trading_bot.features.ai.behavior import SYSTEM_BEHAVIOR
 
 __all__ = ["AIAnalysisResult", "AIChartAnalyzer", "SYSTEM_BEHAVIOR"]

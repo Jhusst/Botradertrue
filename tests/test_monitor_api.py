@@ -18,7 +18,7 @@ async def test_monitor_run_once(client: AsyncClient) -> None:
     mock_monitor = MagicMock()
     mock_monitor.run_cycle = AsyncMock(return_value={"scanned": 0, "alerts_sent": 0, "cycle": 1})
     mock_monitor.status.return_value = {"running": False, "symbols": ["BTC/USDT"]}
-    with patch("trading_bot.api.routes.monitor.get_monitor", return_value=mock_monitor):
+    with patch("trading_bot.features.signals.monitor_routes.get_monitor", return_value=mock_monitor):
         response = await client.post("/api/v1/monitor/run-once")
     assert response.status_code == 200
     assert response.json()["ok"] is True

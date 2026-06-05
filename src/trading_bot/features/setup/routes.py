@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from trading_bot.config.settings import get_settings
-from trading_bot.modules.telegram_alerts.notifier import TelegramNotifier
+from trading_bot.features.alerts.telegram import TelegramNotifier
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 

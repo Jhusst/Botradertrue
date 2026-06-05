@@ -8,9 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.config.settings import get_settings
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.session import get_db
-from trading_bot.modules.ai_chart_analyzer.analyzer import AIChartAnalyzer
-from trading_bot.modules.ai_chart_analyzer.behavior import SYSTEM_BEHAVIOR
-from trading_bot.modules.ai_chart_analyzer.feedback import AIFeedbackStore
+from trading_bot.features.ai.analyzer import AIChartAnalyzer
+from trading_bot.features.ai.behavior import SYSTEM_BEHAVIOR
+from trading_bot.features.ai.feedback import AIFeedbackStore
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 

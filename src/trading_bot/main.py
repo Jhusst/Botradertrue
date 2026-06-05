@@ -7,21 +7,11 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from trading_bot import __version__
-from trading_bot.api.routes.ai import router as ai_router
-from trading_bot.api.routes.autonomous import router as autonomous_router
-from trading_bot.api.routes.broker import router as broker_router
-from trading_bot.api.routes.dashboard import router as dashboard_router
-from trading_bot.api.routes.health import router as health_router
-from trading_bot.api.routes.monitor import router as monitor_router
-from trading_bot.api.routes.paper_trades import router as paper_trades_router
-from trading_bot.api.routes.profiles import router as profiles_router
-from trading_bot.api.routes.setup import router as setup_router
-from trading_bot.api.routes.signals import router as signals_router
-from trading_bot.api.routes.user_trades import router as user_trades_router
+from trading_bot.api.router import API_PREFIX, FEATURE_ROUTERS, health_router
 from trading_bot.config.settings import get_settings
 from trading_bot.db.init_db import create_tables
 from trading_bot.db.session import engine
-from trading_bot.workers.background import start_background_monitor, stop_background_monitor
+from trading_bot.infrastructure.workers.background import start_background_monitor, stop_background_monitor
 
 
 @asynccontextmanager
@@ -53,16 +43,8 @@ STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 app.include_router(health_router)
-app.include_router(signals_router, prefix="/api/v1")
-app.include_router(monitor_router, prefix="/api/v1")
-app.include_router(paper_trades_router, prefix="/api/v1")
-app.include_router(dashboard_router, prefix="/api/v1")
-app.include_router(setup_router, prefix="/api/v1")
-app.include_router(profiles_router, prefix="/api/v1")
-app.include_router(user_trades_router, prefix="/api/v1")
-app.include_router(ai_router, prefix="/api/v1")
-app.include_router(broker_router, prefix="/api/v1")
-app.include_router(autonomous_router, prefix="/api/v1")
+for feature_router in FEATURE_ROUTERS:
+    app.include_router(feature_router, prefix=API_PREFIX)
 
 
 @app.get("/dashboard")

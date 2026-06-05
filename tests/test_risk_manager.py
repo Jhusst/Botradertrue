@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from trading_bot.core.enums import SetupGrade, TradeDirection
-from trading_bot.modules.risk_manager import RiskManager
+from trading_bot.features.signals.risk import RiskManager
 from trading_bot.schemas.risk import AccountRiskState, SetupCandidate
 
 

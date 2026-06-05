@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.config.settings import get_settings
 from trading_bot.db.models.account import Account
 from trading_bot.db.session import get_db
-from trading_bot.modules.execution_engine.binance_broker import BinanceBroker
+from trading_bot.features.broker.binance_broker import BinanceBroker
 
 router = APIRouter(prefix="/broker", tags=["broker"])
 

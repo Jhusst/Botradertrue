@@ -1,7 +1,7 @@
 import pytest
 
-from trading_bot.modules.ai_chart_analyzer.analyzer import AIChartAnalyzer
-from trading_bot.modules.ai_chart_analyzer.behavior import SYSTEM_BEHAVIOR, build_analysis_prompt
+from trading_bot.features.ai.analyzer import AIChartAnalyzer
+from trading_bot.features.ai.behavior import SYSTEM_BEHAVIOR, build_analysis_prompt
 
 
 def test_behavior_prompt_has_rules() -> None:

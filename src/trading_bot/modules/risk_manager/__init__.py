@@ -1,3 +1,3 @@
-from trading_bot.modules.risk_manager.manager import RiskManager
+from trading_bot.features.signals.risk.manager import RiskManager
 
 __all__ = ["RiskManager"]

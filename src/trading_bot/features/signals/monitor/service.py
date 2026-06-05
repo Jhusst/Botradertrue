@@ -10,14 +10,14 @@ from trading_bot.db.models.account import Account
 from trading_bot.db.models.alert_log import AlertLog
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.seed_profiles import ensure_profiles
-from trading_bot.modules.audit_logger.logger import AuditLogger
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
-from trading_bot.modules.autonomous_trader.service import AutonomousTraderService
-from trading_bot.modules.paper_trading.service import PaperTradingService
-from trading_bot.modules.signal_generator.generator import SignalGenerator
-from trading_bot.modules.signal_monitor.price_feed import PriceFeed
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext
-from trading_bot.modules.telegram_alerts.notifier import TelegramNotifier
+from trading_bot.infrastructure.audit.logger import AuditLogger
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
+from trading_bot.features.autonomous.service import AutonomousTraderService
+from trading_bot.features.trades.paper.service import PaperTradingService
+from trading_bot.features.signals.generator import SignalGenerator
+from trading_bot.features.signals.monitor.price_feed import PriceFeed
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
+from trading_bot.features.alerts.telegram import TelegramNotifier
 from trading_bot.schemas.risk import AccountRiskState
 from trading_bot.schemas.signal import SignalCreate
 

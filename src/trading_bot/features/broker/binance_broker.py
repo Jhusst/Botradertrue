@@ -5,7 +5,7 @@ from typing import Any
 
 from trading_bot.config.settings import Settings, get_settings
 from trading_bot.core.asset_catalog import is_futures_symbol
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
 
 
 @dataclass

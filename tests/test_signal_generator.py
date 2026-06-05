@@ -1,8 +1,8 @@
 from decimal import Decimal
 
 from trading_bot.core.enums import TradeDirection
-from trading_bot.modules.signal_generator.generator import SignalGenerator
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext
+from trading_bot.features.signals.generator import SignalGenerator
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
 from trading_bot.schemas.risk import AccountRiskState
 
 
@@ -24,7 +24,7 @@ def test_no_trade_has_rejection_or_explanation(sample_market_context, account_st
 def test_blocks_on_consecutive_losses() -> None:
     """El risk manager bloquea cuando hay 2+ pérdidas seguidas."""
     from trading_bot.core.enums import SetupGrade, TradeDirection
-    from trading_bot.modules.risk_manager import RiskManager
+    from trading_bot.features.signals.risk import RiskManager
     from trading_bot.schemas.risk import AccountRiskState, SetupCandidate
 
     account = AccountRiskState(balance_usdt=Decimal("10000"), consecutive_losses=2)

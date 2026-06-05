@@ -5,7 +5,7 @@ import structlog
 
 from trading_bot.config.settings import get_settings
 from trading_bot.db.session import async_session_factory
-from trading_bot.modules.signal_monitor.service import SignalMonitorService
+from trading_bot.features.signals.monitor.service import SignalMonitorService
 
 logger = structlog.get_logger()
 _monitor: SignalMonitorService | None = None

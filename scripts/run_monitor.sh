@@ -13,7 +13,7 @@ import asyncio
 from trading_bot.config.settings import get_settings
 from trading_bot.db.init_db import create_tables
 from trading_bot.db.session import engine, async_session_factory
-from trading_bot.modules.signal_monitor.service import SignalMonitorService
+from trading_bot.features.signals.monitor.service import SignalMonitorService
 
 async def main():
     await create_tables(engine)

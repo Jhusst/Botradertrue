@@ -8,17 +8,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trading_bot.config.settings import get_settings
 from trading_bot.core.asset_catalog import asset_class_label, get_asset_info, parse_watch_symbols
 from trading_bot.core.enums import SignalStatus
-from trading_bot.modules.signal_monitor.price_feed import PriceFeed
+from trading_bot.features.signals.monitor.price_feed import PriceFeed
 from trading_bot.core.profile_presets import PRESETS
 from trading_bot.db.models.account import Account
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.models.trade import PaperTrade
 from trading_bot.db.models.user_trade import UserTrade
 from trading_bot.db.session import get_db
-from trading_bot.modules.telegram_alerts.notifier import TelegramNotifier
-from trading_bot.workers.background import get_monitor
+from trading_bot.features.alerts.telegram import TelegramNotifier
+from trading_bot.infrastructure.workers.background import get_monitor
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
+
+
+def _trade_source(notes: str | None) -> str:
+    if not notes:
+        return "manual"
+    if notes.startswith("manual|"):
+        return "manual"
+    if "auto-entry" in notes or "Binance order" in notes:
+        return "auto"
+    return "manual"
 
 
 def _distance_percent(entry: Decimal | None, price: Decimal | None) -> float | None:
@@ -410,15 +420,41 @@ async def _build_dashboard_payload(
                 "symbol": t.symbol,
                 "direction": t.direction,
                 "status": t.status,
+                "source": _trade_source(t.notes),
+                "leverage": t.leverage,
                 "pnl_usdt": str(t.pnl_usdt) if t.pnl_usdt else None,
                 "close_reason": t.close_reason,
+                "notes": t.notes,
                 "opened_at": t.opened_at.isoformat() if t.opened_at else None,
                 "closed_at": t.closed_at.isoformat() if t.closed_at else None,
             }
             for t in history
         ],
+        "auto_trades_open": [
+            {
+                "id": t.id,
+                "profile_id": t.account_id,
+                "symbol": t.symbol,
+                "direction": t.direction,
+                "leverage": t.leverage,
+                "entry_price": str(t.entry_price),
+                "stop_loss": str(t.stop_loss),
+                "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+                "notes": t.notes,
+            }
+            for t in history
+            if t.status == "OPEN" and _trade_source(t.notes) == "auto"
+        ],
         "paper_trades": [
-            {"id": t.id, "symbol": t.symbol, "status": t.status, "pnl_usdt": str(t.pnl_usdt) if t.pnl_usdt else None}
+            {
+                "id": t.id,
+                "symbol": t.symbol,
+                "direction": t.direction,
+                "status": t.status,
+                "source": "paper",
+                "pnl_usdt": str(t.pnl_usdt) if t.pnl_usdt else None,
+                "opened_at": t.opened_at.isoformat() if t.opened_at else None,
+            }
             for t in paper_trades
         ],
         "storage": {

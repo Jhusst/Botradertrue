@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from trading_bot.core.exceptions import LiveModeBlockedError
-from trading_bot.modules.execution_engine.engine import ExecutionEngine
+from trading_bot.features.broker.engine import ExecutionEngine
 
 
 def test_execute_raises_blocked() -> None:

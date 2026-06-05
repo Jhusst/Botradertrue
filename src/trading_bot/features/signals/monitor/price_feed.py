@@ -1,7 +1,7 @@
 import time
 from decimal import Decimal
 
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
 
 # Un solo cliente CCXT compartido (evita reload de mercados)
 _shared_collector: DataCollector | None = None

@@ -5,8 +5,8 @@ import pytest
 
 from trading_bot.config.settings import Settings, get_settings
 from trading_bot.core.exceptions import LiveModeBlockedError
-from trading_bot.modules.execution_engine.binance_broker import BinanceBroker
-from trading_bot.modules.execution_engine.engine import ExecutionEngine
+from trading_bot.features.broker.binance_broker import BinanceBroker
+from trading_bot.features.broker.engine import ExecutionEngine
 
 
 def _patch_settings(monkeypatch: pytest.MonkeyPatch, **kwargs) -> Settings:
@@ -15,11 +15,11 @@ def _patch_settings(monkeypatch: pytest.MonkeyPatch, **kwargs) -> Settings:
     data.update(kwargs)
     custom = Settings(**data)
     monkeypatch.setattr(
-        "trading_bot.modules.execution_engine.binance_broker.get_settings",
+        "trading_bot.features.broker.binance_broker.get_settings",
         lambda: custom,
     )
     monkeypatch.setattr(
-        "trading_bot.modules.execution_engine.engine.get_settings",
+        "trading_bot.features.broker.engine.get_settings",
         lambda: custom,
     )
     return custom

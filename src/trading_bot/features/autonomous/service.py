@@ -9,11 +9,11 @@ from trading_bot.core.enums import AlertType, AuditAction, TradeDirection
 from trading_bot.db.models.account import Account
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.models.user_trade import UserTrade
-from trading_bot.modules.ai_chart_analyzer.analyzer import AIChartAnalyzer
-from trading_bot.modules.ai_chart_analyzer.feedback import AIFeedbackStore
-from trading_bot.modules.audit_logger.logger import AuditLogger
-from trading_bot.modules.execution_engine.engine import ExecutionEngine
-from trading_bot.modules.telegram_alerts.notifier import TelegramNotifier
+from trading_bot.features.ai.analyzer import AIChartAnalyzer
+from trading_bot.features.ai.feedback import AIFeedbackStore
+from trading_bot.infrastructure.audit.logger import AuditLogger
+from trading_bot.features.broker.engine import ExecutionEngine
+from trading_bot.features.alerts.telegram import TelegramNotifier
 AI_VERDICT_RANK = {"DISAGREE": 0, "CAUTION": 1, "NEUTRAL": 2, "CONFIRM": 3}
 
 
@@ -202,7 +202,7 @@ class AutonomousTraderService:
         )
 
     async def _sync_balance(self, account: Account) -> None:
-        from trading_bot.modules.execution_engine.binance_broker import BinanceBroker
+        from trading_bot.features.broker.binance_broker import BinanceBroker
 
         broker = BinanceBroker(self.settings)
         snap = broker.fetch_account()

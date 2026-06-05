@@ -1,8 +1,8 @@
 from fastapi import APIRouter
 
 from trading_bot.config.settings import get_settings
-from trading_bot.modules.ai_chart_analyzer.analyzer import AIChartAnalyzer
-from trading_bot.modules.execution_engine.binance_broker import BinanceBroker
+from trading_bot.features.ai.analyzer import AIChartAnalyzer
+from trading_bot.features.broker.binance_broker import BinanceBroker
 
 router = APIRouter(prefix="/autonomous", tags=["autonomous"])
 

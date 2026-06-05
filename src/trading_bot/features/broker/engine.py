@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from trading_bot.config.settings import get_settings
 from trading_bot.core.exceptions import LiveModeBlockedError
-from trading_bot.modules.execution_engine.binance_broker import BinanceBroker, BrokerOrderResult
+from trading_bot.features.broker.binance_broker import BinanceBroker, BrokerOrderResult
 
 
 class ExecutionEngine:

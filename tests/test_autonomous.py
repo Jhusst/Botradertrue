@@ -4,8 +4,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from trading_bot.config.settings import Settings, get_settings
-from trading_bot.modules.autonomous_trader.service import AutonomousTraderService, AI_VERDICT_RANK
-from trading_bot.modules.execution_engine.binance_broker import BrokerOrderResult
+from trading_bot.features.autonomous.service import AutonomousTraderService, AI_VERDICT_RANK
+from trading_bot.features.broker.binance_broker import BrokerOrderResult
 
 
 def _patch_settings(monkeypatch: pytest.MonkeyPatch, **kwargs) -> Settings:
@@ -14,7 +14,7 @@ def _patch_settings(monkeypatch: pytest.MonkeyPatch, **kwargs) -> Settings:
     data.update(kwargs)
     custom = Settings(**data)
     monkeypatch.setattr(
-        "trading_bot.modules.autonomous_trader.service.get_settings",
+        "trading_bot.features.autonomous.service.get_settings",
         lambda: custom,
     )
     return custom
@@ -80,7 +80,7 @@ async def test_process_entry_ai_blocks(db_session, monkeypatch: pytest.MonkeyPat
     from trading_bot.db.models.signal import Signal
     from trading_bot.db.seed_profiles import ensure_profiles
     from trading_bot.core.enums import SignalStatus
-    from trading_bot.modules.ai_chart_analyzer.analyzer import AIAnalysisResult
+    from trading_bot.features.ai.analyzer import AIAnalysisResult
 
     await ensure_profiles(db_session)
     signal = Signal(
@@ -126,7 +126,7 @@ async def test_process_entry_ai_blocks(db_session, monkeypatch: pytest.MonkeyPat
         "_notify_blocked",
         new_callable=AsyncMock,
     ), patch(
-        "trading_bot.modules.autonomous_trader.service.AIChartAnalyzer.analyze_setup",
+        "trading_bot.features.autonomous.service.AIChartAnalyzer.analyze_setup",
         new_callable=AsyncMock,
         return_value=mock_analysis,
     ):

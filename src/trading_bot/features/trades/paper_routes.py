@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trading_bot.db.models.trade import PaperTrade
 from trading_bot.db.session import get_db
-from trading_bot.modules.paper_trading.simulator import PaperTradingSimulator
+from trading_bot.features.trades.paper.simulator import PaperTradingSimulator
 
 router = APIRouter(prefix="/paper-trades", tags=["paper-trades"])
 

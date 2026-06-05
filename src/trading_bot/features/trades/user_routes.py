@@ -11,8 +11,8 @@ from trading_bot.db.models.account import Account
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.models.user_trade import UserTrade
 from trading_bot.db.session import get_db
-from trading_bot.modules.execution_engine.binance_broker import BrokerOrderResult
-from trading_bot.modules.execution_engine.engine import ExecutionEngine
+from trading_bot.features.broker.binance_broker import BrokerOrderResult
+from trading_bot.features.broker.engine import ExecutionEngine
 
 router = APIRouter(prefix="/user-trades", tags=["user-trades"])
 

@@ -1,3 +1,3 @@
-from trading_bot.modules.position_sizer.sizer import PositionSizer
+from trading_bot.features.signals.risk.sizer import PositionSizer
 
 __all__ = ["PositionSizer"]

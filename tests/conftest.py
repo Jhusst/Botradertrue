@@ -15,8 +15,8 @@ from trading_bot.db.base import Base
 from trading_bot.db.models import Account, AlertLog, AuditLog, BacktestRun, PaperTrade, Signal  # noqa: F401
 from trading_bot.db.session import get_db
 from trading_bot.main import app
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
 from trading_bot.schemas.risk import AccountRiskState
 
 get_settings.cache_clear()

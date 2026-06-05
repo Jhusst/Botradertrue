@@ -1,10 +1,10 @@
 from decimal import Decimal
 
 from trading_bot.core.asset_catalog import get_asset_info, quantize_price
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
-from trading_bot.modules.signal_generator.generator import SignalGenerator
-from trading_bot.modules.strategy_engine.precious_metals_mvp import PreciousMetalsMVPStrategy
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
+from trading_bot.features.signals.generator import SignalGenerator
+from trading_bot.features.signals.strategies.precious_metals_mvp import PreciousMetalsMVPStrategy
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
 from trading_bot.schemas.risk import AccountRiskState
 
 

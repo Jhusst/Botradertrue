@@ -4,7 +4,7 @@ from decimal import Decimal
 import numpy as np
 import pandas as pd
 
-from trading_bot.modules.strategy_engine.trend_pullback_mvp import MarketContext, TrendPullbackMVPStrategy
+from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext, TrendPullbackMVPStrategy
 
 
 @dataclass

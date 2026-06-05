@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from trading_bot.api.routes.user_trades import _margin_for_leverage, _resolve_leverage
+from trading_bot.features.trades.user_routes import _margin_for_leverage, _resolve_leverage
 from trading_bot.db.models.account import Account
 from trading_bot.db.models.signal import Signal
 from trading_bot.db.seed_profiles import ensure_profiles

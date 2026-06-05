@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from trading_bot.api.routes.dashboard import _entry_state, _format_ttl
+from trading_bot.features.dashboard.routes import _entry_state, _format_ttl
 from trading_bot.core.enums import SignalStatus
 
 

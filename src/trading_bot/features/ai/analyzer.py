@@ -6,7 +6,7 @@ from decimal import Decimal
 import httpx
 
 from trading_bot.config.settings import Settings, get_settings
-from trading_bot.modules.ai_chart_analyzer.behavior import SYSTEM_BEHAVIOR, build_analysis_prompt
+from trading_bot.features.ai.behavior import SYSTEM_BEHAVIOR, build_analysis_prompt
 
 
 @dataclass

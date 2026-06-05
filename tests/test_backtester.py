@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from trading_bot.modules.backtester.engine import BacktestEngine
-from trading_bot.modules.data_collector.ccxt_client import DataCollector
+from trading_bot.features.backtest.engine import BacktestEngine
+from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
 
 
 def test_backtest_runs_without_error() -> None:

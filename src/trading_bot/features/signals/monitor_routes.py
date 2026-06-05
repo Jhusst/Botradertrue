@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from trading_bot.workers.background import get_monitor, start_background_monitor, stop_background_monitor
+from trading_bot.infrastructure.workers.background import get_monitor, start_background_monitor, stop_background_monitor
 
 router = APIRouter(prefix="/monitor", tags=["monitor"])
 
