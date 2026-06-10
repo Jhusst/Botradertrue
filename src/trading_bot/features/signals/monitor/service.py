@@ -39,6 +39,7 @@ class SignalMonitorService:
         self._last_scan: datetime | None = None
         self._last_price_check: datetime | None = None
         self._last_reconcile: datetime | None = None
+        self._last_daily_data_job: datetime | None = None
         self._cycles = 0
 
     @property
@@ -91,12 +92,43 @@ class SignalMonitorService:
             reconciled = await self._run_reconciliation()
             self._last_reconcile = now
 
+        if self._should_run_daily_data_job(now):
+            await self._run_daily_data_job()
+            self._last_daily_data_job = now
+
         return {
             "scanned": scanned,
             "alerts_sent": alerts_sent,
             "reconciled": reconciled,
             "cycle": self._cycles,
         }
+
+    def _should_run_daily_data_job(self, now: datetime) -> bool:
+        if not (self.settings.derivatives_enabled and self.settings.monitor_use_live_data):
+            return False
+        if not self._last_daily_data_job:
+            return True
+        return (now - self._last_daily_data_job).total_seconds() >= 86_400
+
+    async def _run_daily_data_job(self) -> None:
+        """Acumula histórico y derivados en cache local (crítico: Binance solo
+        expone 30 días de long/short ratio — hay que acumularlos desde ya)."""
+        import asyncio
+
+        from trading_bot.infrastructure.market_data.derivatives_client import DerivativesDataClient
+        from trading_bot.infrastructure.market_data.history_store import HistoryStore
+
+        try:
+            store = HistoryStore()
+            derivatives = DerivativesDataClient()
+            for symbol in self.watch_symbols:
+                for timeframe in ("4h", "1h", "15m"):
+                    await asyncio.to_thread(store.update, symbol, timeframe)
+                await asyncio.to_thread(derivatives.accumulate, symbol)
+        except Exception as exc:  # noqa: BLE001 — el job de datos nunca tumba el monitor
+            AuditLogger.log(
+                "signal_monitor", AuditAction.RECONCILE_ALERT, f"Job diario de datos falló: {exc}"
+            )
 
     def _should_reconcile(self, now: datetime) -> bool:
         if not (self.settings.broker_enabled and self.settings.binance_api_key):
@@ -161,6 +193,16 @@ class SignalMonitorService:
                         ctx.regime = RegimeDetector().detect(ctx.df_4h, ctx.df_1h)
                     except Exception:  # noqa: BLE001 — régimen es opcional
                         ctx.regime = None
+
+                if self.settings.derivatives_enabled and self.settings.monitor_use_live_data:
+                    try:
+                        from trading_bot.infrastructure.market_data.derivatives_client import (
+                            DerivativesDataClient,
+                        )
+
+                        ctx.derivatives = DerivativesDataClient().snapshot(symbol)
+                    except Exception:  # noqa: BLE001 — alt-data es opcional
+                        ctx.derivatives = None
 
                 for profile in profiles:
                     if await self._has_recent_signal(session, symbol, profile.id):
@@ -416,6 +458,8 @@ class SignalMonitorService:
             should_trade=True,
             status=SignalStatus.WATCHING.value,
             strategy_name=data.strategy_name,
+            ml_probability=Decimal(str(data.ml_probability)) if data.ml_probability is not None else None,
+            ml_model_version=data.ml_model_version,
             expires_at=expires,
         )
         session.add(signal)

@@ -32,6 +32,8 @@ SIGNALS_EXTRA_COLUMNS = {
     "last_price": "NUMERIC(18, 8)",
     "expires_at": "DATETIME",
     "updated_at": "DATETIME DEFAULT CURRENT_TIMESTAMP",
+    "ml_probability": "NUMERIC(8, 4)",
+    "ml_model_version": "VARCHAR(50)",
 }
 
 

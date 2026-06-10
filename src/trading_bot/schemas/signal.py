@@ -36,6 +36,8 @@ class SignalCreate(BaseModel):
     should_trade: bool = False
     rejection_reason: str | None = None
     strategy_name: str = "TrendPullbackMVP"
+    ml_probability: float | None = None
+    ml_model_version: str | None = None
 
 
 class SignalResponse(BaseModel):

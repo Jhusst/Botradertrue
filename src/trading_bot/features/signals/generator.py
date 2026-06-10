@@ -23,6 +23,15 @@ class SignalGenerator:
         self.risk_manager = RiskManager()
         self.position_sizer = PositionSizer()
         self.kelly = KellyCalculator()
+        self._ml_filter = None  # lazy: solo se instancia si ml_filter_enabled
+
+    @property
+    def ml_filter(self):
+        if self._ml_filter is None:
+            from trading_bot.features.ml.predictor import MetaSignalFilter
+
+            self._ml_filter = MetaSignalFilter()
+        return self._ml_filter
 
     def _pick_strategy(self, symbol: str):
         asset = get_asset_info(symbol)
@@ -70,8 +79,38 @@ class SignalGenerator:
                 ctx.symbol, strategy_out, account, assessment.rejection_reason or "Rechazado por riesgo."
             )
 
-        # Kelly fraccionado: SOLO reduce el riesgo ya aprobado, nunca lo sube
+        # Filtro ML (meta-labeling): mismo patrón que el AI gate, passthrough sin modelo
         settings = get_settings()
+        ml_model_version: str | None = None
+        if settings.ml_filter_enabled:
+            from trading_bot.features.ml.feature_builder import FeatureBuilder
+
+            try:
+                feats = FeatureBuilder().build(
+                    ctx, strategy_out, derivatives=ctx.derivatives, regime=ctx.regime
+                )
+                ml_result = self.ml_filter.evaluate(feats)
+            except Exception:  # noqa: BLE001 — el filtro nunca rompe la generación
+                ml_result = None
+            if ml_result is not None and ml_result.available:
+                ml_probability = ml_result.probability
+                ml_model_version = ml_result.model_version
+                if settings.ml_filter_mode == "filter" and not ml_result.passed:
+                    return self._build_no_trade(
+                        ctx.symbol, strategy_out, account, f"Filtro ML: {ml_result.reason}"
+                    )
+                if settings.ml_filter_mode == "advise" and ml_result.probability is not None:
+                    # Ajusta confianza ±15 alrededor de p=0.5, sin filtrar
+                    delta = Decimal(str(round((ml_result.probability - 0.5) * 30, 1)))
+                    delta = max(Decimal("-15"), min(Decimal("15"), delta))
+                    new_conf = max(
+                        Decimal("0"), min(Decimal("100"), strategy_out.confidence_score + delta)
+                    )
+                    strategy_out = StrategyOutput(
+                        **{**strategy_out.__dict__, "confidence_score": new_conf}
+                    )
+
+        # Kelly fraccionado: SOLO reduce el riesgo ya aprobado, nunca lo sube
         if settings.kelly_enabled and trade_stats is not None:
             kelly_risk = self.kelly.risk_percent(trade_stats, ml_probability)
             if kelly_risk is not None and kelly_risk < assessment.risk_percent:
@@ -140,6 +179,8 @@ class SignalGenerator:
             invalidation_conditions=strategy_out.invalidation_conditions,
             should_trade=True,
             strategy_name=strategy.STRATEGY_NAME,
+            ml_probability=ml_probability,
+            ml_model_version=ml_model_version,
         )
 
     def _build_no_trade(
