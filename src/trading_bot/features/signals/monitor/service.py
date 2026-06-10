@@ -38,6 +38,7 @@ class SignalMonitorService:
         self._running = False
         self._last_scan: datetime | None = None
         self._last_price_check: datetime | None = None
+        self._last_reconcile: datetime | None = None
         self._cycles = 0
 
     @property
@@ -71,11 +72,12 @@ class SignalMonitorService:
         }
 
     async def run_cycle(self) -> dict:
-        """Un ciclo completo: escanear + vigilar precios."""
+        """Un ciclo completo: escanear + vigilar precios + reconciliar contra el exchange."""
         self._cycles += 1
         now = datetime.now(UTC)
         scanned = 0
         alerts_sent = 0
+        reconciled = 0
 
         if self._should_scan(now):
             scanned = await self._scan_symbols()
@@ -85,7 +87,36 @@ class SignalMonitorService:
             alerts_sent = await self._watch_active_signals()
             self._last_price_check = now
 
-        return {"scanned": scanned, "alerts_sent": alerts_sent, "cycle": self._cycles}
+        if self._should_reconcile(now):
+            reconciled = await self._run_reconciliation()
+            self._last_reconcile = now
+
+        return {
+            "scanned": scanned,
+            "alerts_sent": alerts_sent,
+            "reconciled": reconciled,
+            "cycle": self._cycles,
+        }
+
+    def _should_reconcile(self, now: datetime) -> bool:
+        if not (self.settings.broker_enabled and self.settings.binance_api_key):
+            return False
+        if not self._last_reconcile:
+            return True
+        return (now - self._last_reconcile).total_seconds() >= self.settings.reconcile_interval_seconds
+
+    async def _run_reconciliation(self) -> int:
+        from trading_bot.features.reconciliation.service import ReconciliationService
+
+        try:
+            async with self.session_factory() as session:
+                report = await ReconciliationService(session, self.settings).run()
+                return report.fixed
+        except Exception as exc:  # noqa: BLE001
+            AuditLogger.log(
+                "signal_monitor", AuditAction.RECONCILE_ALERT, f"Error reconciliando: {exc}"
+            )
+            return 0
 
     def _should_scan(self, now: datetime) -> bool:
         if not self._last_scan:

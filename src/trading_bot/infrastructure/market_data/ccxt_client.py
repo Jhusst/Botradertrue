@@ -4,6 +4,7 @@ import pandas as pd
 
 from trading_bot.config.settings import get_settings
 from trading_bot.core.asset_catalog import is_futures_symbol
+from trading_bot.infrastructure.resilience import exchange_breaker, with_retry
 
 
 class DataCollector:
@@ -35,10 +36,21 @@ class DataCollector:
 
     def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 500) -> pd.DataFrame:
         resolved = self._resolve_symbol(symbol)
-        raw = self.exchange.fetch_ohlcv(resolved, timeframe=timeframe, limit=limit)
+        raw = self._fetch_ohlcv_raw(resolved, timeframe, limit)
         df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         return df
+
+    @with_retry()
+    def _fetch_ohlcv_raw(self, resolved_symbol: str, timeframe: str, limit: int) -> list:
+        exchange_breaker.check()
+        try:
+            raw = self.exchange.fetch_ohlcv(resolved_symbol, timeframe=timeframe, limit=limit)
+        except Exception:
+            exchange_breaker.record_failure()
+            raise
+        exchange_breaker.record_success()
+        return raw
 
     def fetch_multi_timeframe(self, symbol: str) -> dict[str, pd.DataFrame]:
         """Límites mínimos para la estrategia (4h≥200, 1h≥50, 15m≥30) — menos llamadas = más rápido."""

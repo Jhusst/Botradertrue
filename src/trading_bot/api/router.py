@@ -7,6 +7,7 @@ from trading_bot.features.autonomous.routes import router as autonomous_router
 from trading_bot.features.broker.routes import router as broker_router
 from trading_bot.features.dashboard.routes import router as dashboard_router
 from trading_bot.features.profiles.routes import router as profiles_router
+from trading_bot.features.safety.routes import router as safety_router
 from trading_bot.features.setup.routes import router as setup_router
 from trading_bot.features.signals.monitor_routes import router as monitor_router
 from trading_bot.features.signals.routes import router as signals_router
@@ -26,6 +27,7 @@ FEATURE_ROUTERS: list[APIRouter] = [
     ai_router,
     broker_router,
     autonomous_router,
+    safety_router,
 ]
 
 __all__ = [
@@ -39,6 +41,7 @@ __all__ = [
     "monitor_router",
     "paper_trades_router",
     "profiles_router",
+    "safety_router",
     "setup_router",
     "signals_router",
     "user_trades_router",

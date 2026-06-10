@@ -81,6 +81,39 @@ class Settings(BaseSettings):
     auto_paper_trade: bool = True
     monitor_use_live_data: bool = True
 
+    # Idempotencia / reconciliación
+    client_order_prefix: str = "tbot"
+    reconcile_interval_seconds: int = 60
+    reconcile_on_startup: bool = True
+    adopt_unknown_positions: bool = False
+
+    # Protección garantizada (SL obligatorio)
+    sl_placement_max_retries: int = 4
+    sl_placement_backoff_base_seconds: float = 1.0
+    flatten_on_protection_failure: bool = True
+
+    # Resiliencia de red
+    exchange_retry_max_attempts: int = 4
+    exchange_retry_backoff_base: float = 0.5
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_reset_seconds: float = 120.0
+    monitor_cycle_timeout_seconds: int = 120
+    watchdog_interval_seconds: int = 60
+    watchdog_stale_after_seconds: int = 180
+
+    # Kill-switch / límite absoluto de pérdida (pensado para cuenta chica)
+    max_total_loss_usdt: float = 50.0
+    min_equity_usdt: float = 0.0
+    initial_equity_usdt: float = 500.0
+    telegram_commands_enabled: bool = False
+    telegram_command_poll_seconds: int = 5
+
+    # Logging / operación
+    log_file_path: str = "./logs/trading_bot.log"
+    log_max_bytes: int = 10_485_760
+    log_backup_count: int = 10
+    startup_alert_enabled: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

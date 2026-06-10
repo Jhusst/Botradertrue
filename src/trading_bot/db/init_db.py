@@ -1,5 +1,5 @@
-from sqlalchemy import inspect, text
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy import inspect, select, text
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession
 
 from trading_bot.db.base import Base
 from trading_bot.db.models import (  # noqa: F401
@@ -8,11 +8,25 @@ from trading_bot.db.models import (  # noqa: F401
     AlertLog,
     AuditLog,
     BacktestRun,
+    BotState,
+    BrokerOrder,
     PaperTrade,
     Signal,
     UserTrade,
 )
+from trading_bot.db.models.bot_state import BOT_STATE_ID
 from trading_bot.db.seed_profiles import ensure_profiles
+
+
+async def ensure_bot_state(session: AsyncSession) -> BotState:
+    """Garantiza la fila única de estado de seguridad (id=1)."""
+    result = await session.execute(select(BotState).where(BotState.id == BOT_STATE_ID))
+    state = result.scalar_one_or_none()
+    if state is None:
+        state = BotState(id=BOT_STATE_ID)
+        session.add(state)
+        await session.flush()
+    return state
 
 SIGNALS_EXTRA_COLUMNS = {
     "last_price": "NUMERIC(18, 8)",
@@ -72,4 +86,5 @@ async def create_tables(engine: AsyncEngine) -> None:
 
     async with async_session_factory() as session:
         await ensure_profiles(session)
+        await ensure_bot_state(session)
         await session.commit()
