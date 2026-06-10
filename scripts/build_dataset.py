@@ -33,7 +33,7 @@ def main() -> None:
     if dataset.empty:
         print("Sin eventos. ¿Descargaste el histórico con scripts/download_history.py?")
         return
-    print(f"Dataset: {len(dataset)} eventos → {args.out}")
+    print(f"Dataset: {len(dataset)} eventos -> {args.out}")
     print(f"  Win rate base: {dataset['label'].mean() * 100:.1f}%")
     print(dataset["barrier_hit"].value_counts().to_string())
 
