@@ -114,6 +114,29 @@ class Settings(BaseSettings):
     log_backup_count: int = 10
     startup_alert_enabled: bool = True
 
+    # Datos históricos / alt-data
+    data_dir: str = "./data"
+    history_backfill_days: int = 730
+    derivatives_enabled: bool = True
+
+    # Régimen de mercado
+    regime_detection_enabled: bool = True
+
+    # Kelly fraccionado (solo reduce el riesgo, nunca lo aumenta)
+    kelly_enabled: bool = False
+    kelly_fraction: float = 0.25
+    kelly_lookback_trades: int = 50
+    kelly_min_trades: int = 20
+    kelly_cap_risk_percent: float = 0.5
+    kelly_floor_risk_percent: float = 0.1
+
+    # Filtro ML (meta-labeling)
+    ml_filter_enabled: bool = False
+    ml_filter_mode: Literal["filter", "advise"] = "advise"
+    ml_min_success_probability: float = 0.55
+    ml_models_dir: str = "./models"
+    ml_retrain_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:
