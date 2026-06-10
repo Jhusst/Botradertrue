@@ -34,6 +34,7 @@ class SetupCandidate(BaseModel):
     atr_percent: Decimal | None = None
     has_high_impact_event_nearby: bool = False
     manual_approval: bool = False
+    regime: str | None = None
 
 
 class RiskAssessment(BaseModel):

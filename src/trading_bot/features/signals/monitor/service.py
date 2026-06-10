@@ -132,6 +132,16 @@ class SignalMonitorService:
         count = 0
         async with self.session_factory() as session:
             profiles = await ensure_profiles(session)
+
+            trade_stats = None
+            if self.settings.kelly_enabled:
+                from trading_bot.features.signals.risk import TradeStatsProvider
+
+                try:
+                    trade_stats = await TradeStatsProvider(self.settings).get_stats(session)
+                except Exception:  # noqa: BLE001 — Kelly es opcional, nunca rompe el scan
+                    trade_stats = None
+
             for symbol in self.watch_symbols:
                 try:
                     data = self.price_feed.get_market_data(symbol)
@@ -144,11 +154,19 @@ class SignalMonitorService:
                     )
                     continue
 
+                if self.settings.regime_detection_enabled:
+                    try:
+                        from trading_bot.features.regime import RegimeDetector
+
+                        ctx.regime = RegimeDetector().detect(ctx.df_4h, ctx.df_1h)
+                    except Exception:  # noqa: BLE001 — régimen es opcional
+                        ctx.regime = None
+
                 for profile in profiles:
                     if await self._has_recent_signal(session, symbol, profile.id):
                         continue
                     account = self._profile_to_risk_state(profile)
-                    signal_data = self.generator.generate(ctx, account)
+                    signal_data = self.generator.generate(ctx, account, trade_stats=trade_stats)
                     signal_data.symbol = symbol
                     if signal_data.should_trade:
                         saved = await self._save_signal(session, signal_data, profile.id)
