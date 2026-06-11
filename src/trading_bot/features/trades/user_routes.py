@@ -176,6 +176,56 @@ async def enter_trade(body: EnterTradeRequest, db: AsyncSession = Depends(get_db
     }
 
 
+@router.post("/{trade_id}/close-market")
+async def close_trade_market(trade_id: int, db: AsyncSession = Depends(get_db)) -> dict:
+    """Cierre manual REAL: flatten en Binance + cancela SL/TP del símbolo.
+
+    Si el trade no tiene órdenes en el broker, exige usar el endpoint
+    /close clásico (registro manual con exit_price).
+    """
+    from sqlalchemy import select as sa_select
+
+    from trading_bot.db.models.broker_order import BrokerOrder
+    from trading_bot.features.broker.execution_service import OrderExecutionService
+
+    result = await db.execute(select(UserTrade).where(UserTrade.id == trade_id))
+    trade = result.scalar_one_or_none()
+    if not trade or trade.status != "OPEN":
+        raise HTTPException(404, "Trade abierto no encontrado")
+
+    entry_result = await db.execute(
+        sa_select(BrokerOrder).where(
+            BrokerOrder.user_trade_id == trade.id,
+            BrokerOrder.kind == BrokerOrder.KIND_ENTRY,
+            BrokerOrder.status.in_([BrokerOrder.STATUS_ACKED, BrokerOrder.STATUS_FILLED]),
+        )
+    )
+    has_broker_entry = entry_result.scalar_one_or_none() is not None
+    if not has_broker_entry and "Binance" not in (trade.notes or ""):
+        raise HTTPException(
+            400, "Trade sin órdenes en broker: usa POST /user-trades/{id}/close con exit_price"
+        )
+
+    service = OrderExecutionService(db)
+    flatten = await service.flatten_trade(trade, "MANUAL_CLOSE")
+    if not flatten.ok:
+        raise HTTPException(502, f"No se pudo cerrar en Binance: {flatten.message}")
+
+    # Reconciliación inmediata para fijar exit_price/pnl reales
+    from trading_bot.features.reconciliation.service import ReconciliationService
+
+    await ReconciliationService(db).run()
+    await db.refresh(trade)
+    return {
+        "ok": True,
+        "trade_id": trade.id,
+        "status": trade.status,
+        "exit_price": str(trade.exit_price) if trade.exit_price else None,
+        "pnl_usdt": str(trade.pnl_usdt) if trade.pnl_usdt else None,
+        "source": "binance",
+    }
+
+
 @router.post("/{trade_id}/close")
 async def close_trade(
     trade_id: int, body: CloseTradeRequest, db: AsyncSession = Depends(get_db)

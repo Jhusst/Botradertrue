@@ -1,10 +1,15 @@
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
 from trading_bot.core.asset_catalog import quantize_price
 from trading_bot.core.enums import SetupGrade, TradeDirection
+
+if TYPE_CHECKING:
+    from trading_bot.features.regime.detector import RegimeState
+    from trading_bot.infrastructure.market_data.derivatives_client import DerivativesSnapshot
 
 
 @dataclass
@@ -14,6 +19,8 @@ class MarketContext:
     df_1h: pd.DataFrame
     df_15m: pd.DataFrame
     has_high_impact_event: bool = False
+    regime: "RegimeState | None" = None
+    derivatives: "DerivativesSnapshot | Any | None" = None
 
 
 @dataclass
@@ -104,11 +111,35 @@ class TrendPullbackMVPStrategy:
         if ctx.has_high_impact_event:
             return self._no_trade("Evento económico de alto impacto cercano.", atr_pct)
 
-        if long_score >= 5 and long_score > short_score:
+        # Modulación por régimen de mercado (opcional: regime=None → sin cambio)
+        min_score = 5
+        if ctx.regime is not None:
+            from trading_bot.features.regime.detector import MarketRegime
+
+            regime = ctx.regime.regime
+            if regime == MarketRegime.HIGH_VOL:
+                return self._no_trade(
+                    f"Régimen de alta volatilidad: {ctx.regime.explanation}", atr_pct
+                )
+            if regime == MarketRegime.TREND_UP and short_score > long_score:
+                return self._no_trade("Short contra régimen alcista bloqueado.", atr_pct)
+            if regime == MarketRegime.TREND_DOWN and long_score > short_score:
+                return self._no_trade("Long contra régimen bajista bloqueado.", atr_pct)
+            if regime == MarketRegime.RANGE:
+                min_score = 7  # estrategia de tendencia: en rango exige más confirmaciones
+                reasons.append("Régimen de rango: umbral de score elevado.")
+            elif regime == MarketRegime.TREND_UP and long_score > short_score:
+                long_score += 1
+                reasons.append("Régimen alcista alineado (+1).")
+            elif regime == MarketRegime.TREND_DOWN and short_score > long_score:
+                short_score += 1
+                reasons.append("Régimen bajista alineado (+1).")
+
+        if long_score >= min_score and long_score > short_score:
             return self._build_signal(
                 TradeDirection.LONG, long_score, short_score, last_1h, atr_pct, reasons, ctx
             )
-        if short_score >= 5 and short_score > long_score:
+        if short_score >= min_score and short_score > long_score:
             return self._build_signal(
                 TradeDirection.SHORT, short_score, long_score, last_1h, atr_pct, reasons, ctx
             )
@@ -183,21 +214,12 @@ class TrendPullbackMVPStrategy:
 
     @staticmethod
     def _add_indicators(df: pd.DataFrame) -> pd.DataFrame:
+        from trading_bot.features.signals import indicators as ind
+
         result = df.copy()
-        result["ema20"] = result["close"].ewm(span=20, adjust=False).mean()
-        result["ema50"] = result["close"].ewm(span=50, adjust=False).mean()
-        result["ema200"] = result["close"].ewm(span=200, adjust=False).mean()
-
-        delta = result["close"].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = (-delta.clip(upper=0)).rolling(14).mean()
-        rs = gain / loss.replace(0, float("nan"))
-        result["rsi"] = 100 - (100 / (1 + rs))
-
-        high_low = result["high"] - result["low"]
-        high_close = (result["high"] - result["close"].shift()).abs()
-        low_close = (result["low"] - result["close"].shift()).abs()
-        tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-        result["atr"] = tr.rolling(14).mean()
-
+        result["ema20"] = ind.ema(result["close"], 20)
+        result["ema50"] = ind.ema(result["close"], 50)
+        result["ema200"] = ind.ema(result["close"], 200)
+        result["rsi"] = ind.rsi(result["close"], 14)
+        result["atr"] = ind.atr(result, 14)
         return result.dropna()

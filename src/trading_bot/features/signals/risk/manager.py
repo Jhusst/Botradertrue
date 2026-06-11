@@ -59,6 +59,11 @@ class RiskManager:
             risk_percent = min(risk_percent, Decimal("0.25"))
             risk_usdt = (account.balance_usdt * risk_percent / Decimal("100")).quantize(Decimal("0.01"))
 
+        if setup.regime in ("RANGE", "HIGH_VOL"):
+            warnings.append(f"Régimen {setup.regime}: riesgo reducido automáticamente.")
+            risk_percent = min(risk_percent, Decimal("0.25"))
+            risk_usdt = (account.balance_usdt * risk_percent / Decimal("100")).quantize(Decimal("0.01"))
+
         return RiskAssessment(
             approved=True,
             direction=setup.direction,

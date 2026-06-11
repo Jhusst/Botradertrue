@@ -41,6 +41,8 @@ class SignalMonitorService:
         self._running = False
         self._last_scan: datetime | None = None
         self._last_price_check: datetime | None = None
+        self._last_reconcile: datetime | None = None
+        self._last_daily_data_job: datetime | None = None
         self._cycles = 0
         self._autonomous_retry_after: dict[int, float] = {}
 
@@ -75,11 +77,12 @@ class SignalMonitorService:
         }
 
     async def run_cycle(self) -> dict:
-        """Un ciclo completo: escanear + vigilar precios."""
+        """Un ciclo completo: escanear + vigilar precios + reconciliar contra el exchange."""
         self._cycles += 1
         now = datetime.now(UTC)
         scanned = 0
         alerts_sent = 0
+        reconciled = 0
 
         if self._should_scan(now):
             scanned = await self._scan_symbols()
@@ -89,7 +92,67 @@ class SignalMonitorService:
             alerts_sent = await self._watch_active_signals()
             self._last_price_check = now
 
-        return {"scanned": scanned, "alerts_sent": alerts_sent, "cycle": self._cycles}
+        if self._should_reconcile(now):
+            reconciled = await self._run_reconciliation()
+            self._last_reconcile = now
+
+        if self._should_run_daily_data_job(now):
+            await self._run_daily_data_job()
+            self._last_daily_data_job = now
+
+        return {
+            "scanned": scanned,
+            "alerts_sent": alerts_sent,
+            "reconciled": reconciled,
+            "cycle": self._cycles,
+        }
+
+    def _should_run_daily_data_job(self, now: datetime) -> bool:
+        if not (self.settings.derivatives_enabled and self.settings.monitor_use_live_data):
+            return False
+        if not self._last_daily_data_job:
+            return True
+        return (now - self._last_daily_data_job).total_seconds() >= 86_400
+
+    async def _run_daily_data_job(self) -> None:
+        """Acumula histórico y derivados en cache local (crítico: Binance solo
+        expone 30 días de long/short ratio — hay que acumularlos desde ya)."""
+        import asyncio
+
+        from trading_bot.infrastructure.market_data.derivatives_client import DerivativesDataClient
+        from trading_bot.infrastructure.market_data.history_store import HistoryStore
+
+        try:
+            store = HistoryStore()
+            derivatives = DerivativesDataClient()
+            for symbol in self.watch_symbols:
+                for timeframe in ("4h", "1h", "15m"):
+                    await asyncio.to_thread(store.update, symbol, timeframe)
+                await asyncio.to_thread(derivatives.accumulate, symbol)
+        except Exception as exc:  # noqa: BLE001 — el job de datos nunca tumba el monitor
+            AuditLogger.log(
+                "signal_monitor", AuditAction.RECONCILE_ALERT, f"Job diario de datos falló: {exc}"
+            )
+
+    def _should_reconcile(self, now: datetime) -> bool:
+        if not (self.settings.broker_enabled and self.settings.binance_api_key):
+            return False
+        if not self._last_reconcile:
+            return True
+        return (now - self._last_reconcile).total_seconds() >= self.settings.reconcile_interval_seconds
+
+    async def _run_reconciliation(self) -> int:
+        from trading_bot.features.reconciliation.service import ReconciliationService
+
+        try:
+            async with self.session_factory() as session:
+                report = await ReconciliationService(session, self.settings).run()
+                return report.fixed
+        except Exception as exc:  # noqa: BLE001
+            AuditLogger.log(
+                "signal_monitor", AuditAction.RECONCILE_ALERT, f"Error reconciliando: {exc}"
+            )
+            return 0
 
     def _should_scan(self, now: datetime) -> bool:
         if not self._last_scan:
@@ -109,6 +172,16 @@ class SignalMonitorService:
                 for p in await ensure_profiles(session)
                 if p.profile_type in self.settings.active_profile_type_set()
             ]
+
+            trade_stats = None
+            if self.settings.kelly_enabled:
+                from trading_bot.features.signals.risk import TradeStatsProvider
+
+                try:
+                    trade_stats = await TradeStatsProvider(self.settings).get_stats(session)
+                except Exception:  # noqa: BLE001 — Kelly es opcional, nunca rompe el scan
+                    trade_stats = None
+
             for symbol in self.watch_symbols:
                 try:
                     data = self.price_feed.get_market_data(symbol)
@@ -121,11 +194,29 @@ class SignalMonitorService:
                     )
                     continue
 
+                if self.settings.regime_detection_enabled:
+                    try:
+                        from trading_bot.features.regime import RegimeDetector
+
+                        ctx.regime = RegimeDetector().detect(ctx.df_4h, ctx.df_1h)
+                    except Exception:  # noqa: BLE001 — régimen es opcional
+                        ctx.regime = None
+
+                if self.settings.derivatives_enabled and self.settings.monitor_use_live_data:
+                    try:
+                        from trading_bot.infrastructure.market_data.derivatives_client import (
+                            DerivativesDataClient,
+                        )
+
+                        ctx.derivatives = DerivativesDataClient().snapshot(symbol)
+                    except Exception:  # noqa: BLE001 — alt-data es opcional
+                        ctx.derivatives = None
+
                 for profile in profiles:
                     if await self._has_recent_signal(session, symbol, profile.id):
                         continue
                     account = self._profile_to_risk_state(profile)
-                    signal_data = self.generator.generate(ctx, account)
+                    signal_data = self.generator.generate(ctx, account, trade_stats=trade_stats)
                     signal_data.symbol = symbol
                     if signal_data.should_trade:
                         saved = await self._save_signal(session, signal_data, profile.id)
@@ -399,6 +490,8 @@ class SignalMonitorService:
             should_trade=True,
             status=SignalStatus.WATCHING.value,
             strategy_name=data.strategy_name,
+            ml_probability=Decimal(str(data.ml_probability)) if data.ml_probability is not None else None,
+            ml_model_version=data.ml_model_version,
             expires_at=expires,
         )
         session.add(signal)
