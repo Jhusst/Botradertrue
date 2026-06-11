@@ -639,6 +639,10 @@
       return `<span class="badge ${cls}">${label || (assetClass === "precious_metal" ? "Metal" : "Cripto")}</span>`;
     }
 
+    // El endpoint /lite (cada 2s) no trae precios; recordamos el último
+    // precio conocido (del /data cada 20s) para que no parpadeen a "—".
+    const marketPriceCache = {};
+
     function renderMarkets(markets) {
       const grid = document.getElementById("markets-grid");
       const filtered = signalFilter === "all"
@@ -649,14 +653,22 @@
         return;
       }
       document.getElementById("markets-count").textContent = filtered.length;
-      grid.innerHTML = filtered.map(m => `
+      grid.innerHTML = filtered.map(m => {
+        if (m.last_price) marketPriceCache[m.symbol] = m.last_price;
+        const price = m.last_price || marketPriceCache[m.symbol];
+        const priceNum = price ? parseFloat(price) : null;
+        const priceFmt = priceNum != null
+          ? "$" + priceNum.toLocaleString("en-US", { maximumFractionDigits: priceNum >= 100 ? 2 : 4 })
+          : "—";
+        return `
         <div class="market-card ${m.asset_class} ${m.urgent ? 'urgent' : ''} ${m.has_signal ? 'has-signal' : ''}"
              onclick="setFilter('${m.asset_class}')" title="${m.display_name}">
           <div class="m-name">${m.display_name.split("(")[0].trim()}</div>
-          <div class="m-price">${m.last_price ? "$" + m.last_price : "—"}</div>
+          <div class="m-price">${priceFmt}</div>
           <div class="m-status ${m.urgent ? 'hot' : ''}">${m.status_label}</div>
           <div style="margin-top:0.3rem">${chartBtn(m.symbol, "📈")}</div>
-        </div>`).join("");
+        </div>`;
+      }).join("");
     }
 
     function formatCountdown(seconds) {
