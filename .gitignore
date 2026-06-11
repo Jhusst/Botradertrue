@@ -8,6 +8,7 @@ trading_bot.db-*
 data/
 models/
 logs/
+*.pid
 *.egg-info/
 dist/
 build/

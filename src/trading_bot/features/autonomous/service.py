@@ -1,3 +1,5 @@
+import asyncio
+import time
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -15,6 +17,8 @@ from trading_bot.infrastructure.audit.logger import AuditLogger
 from trading_bot.features.broker.engine import ExecutionEngine
 from trading_bot.features.alerts.telegram import TelegramNotifier
 AI_VERDICT_RANK = {"DISAGREE": 0, "CAUTION": 1, "NEUTRAL": 2, "CONFIRM": 3}
+_AI_CACHE: dict[int, tuple[float, str, str]] = {}
+_AI_CACHE_TTL_SECONDS = 600
 
 
 @dataclass
@@ -68,6 +72,31 @@ class AutonomousTraderService:
             )
         return None
 
+    async def preview_ai(self, signal: Signal) -> dict:
+        """Solo consulta Ollama — no ejecuta trade."""
+        if not self.settings.ai_enabled:
+            return {"verdict": "NEUTRAL", "summary": "AI_ENABLED=false", "would_enter": False}
+        store = AIFeedbackStore(self.session)
+        few_shot = await store.get_few_shot_examples()
+        analysis = await self.ai.analyze_setup(
+            symbol=signal.symbol,
+            direction=signal.direction,
+            setup_grade=signal.setup_grade,
+            technical_explanation=signal.technical_explanation or "",
+            entry=str(signal.entry_price) if signal.entry_price else None,
+            stop=str(signal.stop_loss) if signal.stop_loss else None,
+            tp2=str(signal.take_profit_2) if signal.take_profit_2 else None,
+            few_shot_examples=few_shot,
+        )
+        would_enter = self._ai_allows(analysis.verdict) if self.settings.ai_gate_auto_trade else True
+        return {
+            "verdict": analysis.verdict,
+            "summary": analysis.summary,
+            "risks": analysis.risks,
+            "min_required": self.settings.ai_auto_min_verdict,
+            "would_enter": would_enter,
+        }
+
     async def process_entry(self, signal: Signal, current_price: Decimal) -> AutonomousResult:
         if not self.is_enabled:
             return AutonomousResult(executed=False, message="Modo autónomo desactivado")
@@ -109,20 +138,25 @@ class AutonomousTraderService:
         ai_verdict: str | None = None
         ai_summary = ""
         if self.settings.ai_gate_auto_trade and self.settings.ai_enabled:
-            store = AIFeedbackStore(self.session)
-            few_shot = await store.get_few_shot_examples()
-            analysis = await self.ai.analyze_setup(
-                symbol=signal.symbol,
-                direction=signal.direction,
-                setup_grade=signal.setup_grade,
-                technical_explanation=signal.technical_explanation or "",
-                entry=str(signal.entry_price) if signal.entry_price else None,
-                stop=str(signal.stop_loss) if signal.stop_loss else None,
-                tp2=str(signal.take_profit_2) if signal.take_profit_2 else None,
-                few_shot_examples=few_shot,
-            )
-            ai_verdict = analysis.verdict
-            ai_summary = analysis.summary
+            cached = _AI_CACHE.get(signal.id)
+            if cached and time.time() - cached[0] < _AI_CACHE_TTL_SECONDS:
+                ai_verdict, ai_summary = cached[1], cached[2]
+            else:
+                store = AIFeedbackStore(self.session)
+                few_shot = await store.get_few_shot_examples()
+                analysis = await self.ai.analyze_setup(
+                    symbol=signal.symbol,
+                    direction=signal.direction,
+                    setup_grade=signal.setup_grade,
+                    technical_explanation=signal.technical_explanation or "",
+                    entry=str(signal.entry_price) if signal.entry_price else None,
+                    stop=str(signal.stop_loss) if signal.stop_loss else None,
+                    tp2=str(signal.take_profit_2) if signal.take_profit_2 else None,
+                    few_shot_examples=few_shot,
+                )
+                ai_verdict = analysis.verdict
+                ai_summary = analysis.summary
+                _AI_CACHE[signal.id] = (time.time(), ai_verdict, ai_summary)
             if not self._ai_allows(ai_verdict):
                 msg = f"IA bloqueó auto-trade: {ai_verdict} — {ai_summary}"
                 AuditLogger.log("autonomous", AuditAction.SIGNAL_REJECTED, msg, entity_id=signal.id)
@@ -149,6 +183,16 @@ class AutonomousTraderService:
         ai_summary: str,
     ) -> AutonomousResult:
         margin = signal.margin_required or Decimal("0")
+        leverage = signal.recommended_leverage or 1
+        position_usdt = signal.position_size or (margin * Decimal(str(leverage)))
+        live_broker = self.settings.broker_enabled and self.settings.live_mode_enabled
+
+        # La ejecución real ocurre DESPUÉS de crear el trade: la idempotencia
+        # necesita trade.id para el clientOrderId determinístico (tbot-{id}-e).
+        broker_order_id: str | None = None
+        broker_msg = ""
+        notes = f"auto-entry @ {current_price}" + (f" | IA:{ai_verdict}" if ai_verdict else "")
+
         trade = UserTrade(
             account_id=account.id,
             signal_id=signal.id,
@@ -160,28 +204,27 @@ class AutonomousTraderService:
             take_profit_1=signal.take_profit_1,
             take_profit_2=signal.take_profit_2,
             margin_used=margin,
-            leverage=signal.recommended_leverage or 1,
+            leverage=leverage,
             risk_usdt=signal.risk_usdt or Decimal("0"),
-            notes=f"auto-entry @ {current_price}" + (f" | IA:{ai_verdict}" if ai_verdict else ""),
+            notes=notes,
         )
         self.session.add(trade)
         await self.session.flush()
 
-        broker_order_id: str | None = None
-        broker_msg = ""
-        engine = ExecutionEngine()
-        position_usdt = signal.position_size or (margin * Decimal(str(trade.leverage)))
-
-        if self.settings.broker_enabled and self.settings.live_mode_enabled:
+        if live_broker:
             from trading_bot.core.exceptions import KillSwitchEngagedError, LiveModeBlockedError
 
+            engine = ExecutionEngine()
             try:
                 outcome = await engine.execute_protected(
                     session=self.session,
                     trade=trade,
                     position_size_usdt=position_usdt,
-                    leverage=trade.leverage,
+                    leverage=leverage,
                 )
+            except (LiveModeBlockedError, KillSwitchEngagedError) as exc:
+                broker_msg = str(exc)
+            else:
                 broker_msg = outcome.message
                 if outcome.ok:
                     broker_order_id = outcome.entry_order_id
@@ -194,8 +237,17 @@ class AutonomousTraderService:
                         blocked_reason=broker_msg,
                         ai_verdict=ai_verdict,
                     )
-            except (LiveModeBlockedError, KillSwitchEngagedError) as exc:
-                broker_msg = str(exc)
+                else:
+                    # Entrada rechazada: el trade ya quedó CANCELLED en el servicio
+                    msg = f"Binance rechazó orden: {broker_msg}"
+                    AuditLogger.log("autonomous", AuditAction.SIGNAL_REJECTED, msg, entity_id=signal.id)
+                    await self._notify_blocked(signal, current_price, msg)
+                    return AutonomousResult(
+                        executed=False,
+                        trade_id=trade.id,
+                        blocked_reason=msg,
+                        ai_verdict=ai_verdict,
+                    )
 
         if self.settings.sync_balance_from_broker and broker_order_id:
             await self._sync_balance(account)
@@ -256,10 +308,45 @@ class AutonomousTraderService:
             entry_price=signal.entry_price,
             current_price=price,
             stop_loss=signal.stop_loss,
+            take_profit_1=signal.take_profit_1,
+            take_profit_2=signal.take_profit_2,
             extra=reason,
             signal_id=signal.id,
         )
         await self.notifier.send_raw(message, urgent=False)
+
+    async def close_trades_on_signal_expired(self, signal: Signal, current_price: Decimal) -> list[UserTrade]:
+        """Cierra trades abiertos ligados a una señal que caducó."""
+        from datetime import UTC, datetime
+
+        result = await self.session.execute(
+            select(UserTrade).where(
+                UserTrade.signal_id == signal.id,
+                UserTrade.status == "OPEN",
+            )
+        )
+        closed: list[UserTrade] = []
+        for trade in result.scalars().all():
+            pnl = self._estimate_pnl(trade, current_price)
+            trade.status = "CLOSED"
+            trade.exit_price = current_price
+            trade.pnl_usdt = pnl
+            trade.close_reason = "SIGNAL_EXPIRED"
+            trade.closed_at = datetime.now(UTC)
+
+            acc_result = await self.session.execute(select(Account).where(Account.id == trade.account_id))
+            account = acc_result.scalar_one()
+            account.balance_usdt += pnl
+            account.daily_pnl_usdt += pnl
+            account.weekly_pnl_usdt += pnl
+            closed.append(trade)
+            AuditLogger.log(
+                "autonomous",
+                AuditAction.LIVE_ENABLED,
+                f"Trade #{trade.id} cerrado SIGNAL_EXPIRED {signal.symbol} P&L={pnl}",
+                entity_id=signal.id,
+            )
+        return closed
 
     async def update_open_trades(self, symbol: str, current_price: Decimal) -> list[tuple[UserTrade, str]]:
         """Cierra trades locales cuando precio toca SL/TP.

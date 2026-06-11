@@ -11,6 +11,7 @@ from trading_bot.db.models.signal import Signal
 from trading_bot.db.session import get_db
 from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
 from trading_bot.features.signals.generator import SignalGenerator
+from trading_bot.features.signals.outcome_tracker import SignalOutcomeTracker
 from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
 from trading_bot.features.alerts.telegram import TelegramNotifier
 from trading_bot.schemas.risk import AccountRiskState
@@ -123,6 +124,9 @@ async def generate_signal(
         db_signal.status = SignalStatus.WATCHING.value
         db_signal.expires_at = datetime.now(UTC) + timedelta(hours=settings.signal_ttl_hours)
     db.add(db_signal)
+    await db.flush()
+    if signal_data.should_trade:
+        await SignalOutcomeTracker(db).register_new_signal(db_signal)
     await db.commit()
     await db.refresh(db_signal)
 

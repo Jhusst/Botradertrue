@@ -1,0 +1,13 @@
+[Unit]
+Description=Trading Bot - Ollama (filtro IA)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@PROJECT_ROOT@
+ExecStart=@PROJECT_ROOT@/scripts/ensure_ollama.sh
+
+[Install]
+WantedBy=default.target

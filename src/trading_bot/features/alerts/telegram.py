@@ -18,8 +18,42 @@ class TelegramNotifier:
         return bool(self.settings.telegram_bot_token and self.settings.telegram_chat_id)
 
     async def send_raw(self, message: str, urgent: bool = False) -> bool:
+        ok, _ = await self._post_message(message, urgent=urgent)
+        return ok
+
+    async def check_connection(self) -> dict:
+        """Valida token y chat sin enviar mensaje."""
         if not self.is_configured:
-            return False
+            return {"ok": False, "error": "Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID"}
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            me = await client.get(
+                f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/getMe"
+            )
+            if me.status_code != 200 or not me.json().get("ok"):
+                return {"ok": False, "error": "Token de bot inválido o revocado"}
+            chat = await client.get(
+                f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/getChat",
+                params={"chat_id": self.settings.telegram_chat_id},
+            )
+            if chat.status_code != 200 or not chat.json().get("ok"):
+                body = chat.json() if chat.headers.get("content-type", "").startswith("application/json") else {}
+                return {
+                    "ok": False,
+                    "error": body.get("description") or "No se encontró el chat — pulsa Start en tu bot",
+                }
+        return {"ok": True, "error": None}
+
+    async def probe(self) -> dict:
+        """Prueba envío y devuelve error legible de Telegram."""
+        if not self.is_configured:
+            return {"ok": False, "error": "Faltan TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID"}
+        ok, err = await self._post_message(
+            "✅ <b>Trading Bot conectado</b>\nSi ves esto, las alertas funcionan.",
+            urgent=True,
+        )
+        return {"ok": ok, "error": err}
+
+    async def _post_message(self, message: str, *, urgent: bool) -> tuple[bool, str | None]:
         url = f"https://api.telegram.org/bot{self.settings.telegram_bot_token}/sendMessage"
         async with httpx.AsyncClient(timeout=10) as client:
             response = await client.post(
@@ -32,7 +66,13 @@ class TelegramNotifier:
                     "disable_notification": not urgent,
                 },
             )
-            return response.status_code == 200
+            if response.status_code == 200:
+                return True, None
+            try:
+                body = response.json()
+                return False, body.get("description") or response.text[:200]
+            except Exception:
+                return False, response.text[:200] or f"HTTP {response.status_code}"
 
     async def send_signal(self, signal: SignalCreate | SignalResponse, urgent: bool = False) -> bool:
         return await self.send_raw(self._format_signal(signal), urgent=urgent)

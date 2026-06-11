@@ -54,6 +54,24 @@ class BinanceBroker:
     def is_configured(self) -> bool:
         return bool(self.settings.binance_api_key and self.settings.binance_api_secret)
 
+    def check_trading_permission(self, symbol: str = "BTC/USDT") -> tuple[bool, str]:
+        """Prueba permisos de escritura (órdenes/apalancamiento) sin abrir posición."""
+        if not self.is_configured():
+            return False, "API keys no configuradas"
+        try:
+            resolved = self.resolve_futures_symbol(symbol)
+            self.exchange.set_leverage(1, resolved)
+            return True, "Permisos de trading OK"
+        except Exception as exc:
+            err = str(exc)
+            if "-2015" in err:
+                return (
+                    False,
+                    "API key sin permiso de Futuros o IP no autorizada (-2015). "
+                    "En Binance: activa 'Habilitar Futuros' en la API y revisa la whitelist de IP.",
+                )
+            return False, f"Sin permiso de trading: {err}"
+
     def can_execute(self) -> tuple[bool, str]:
         if not self.settings.broker_enabled:
             return False, "BROKER_ENABLED=false — activa el broker en .env"

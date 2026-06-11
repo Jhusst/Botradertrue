@@ -180,27 +180,80 @@
     .badge.manual-tag { background: rgba(59,130,246,0.25); color: var(--blue); }
     .auto-trades-panel { background: var(--card); border: 1px solid rgba(168,85,247,0.35); border-radius: 12px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; }
     .auto-trades-panel h3 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #c084fc; }
+    .monitor-panel { background: var(--card); border: 1px solid rgba(59,130,246,0.35); border-radius: 12px; padding: 0.65rem 0.85rem; margin-bottom: 1rem; font-size: 0.78rem; }
+    .monitor-panel h3 { font-size: 0.9rem; margin-bottom: 0.45rem; color: var(--blue); }
+    .monitor-warn { color: var(--urgent); margin: 0.25rem 0; }
+    .monitor-ok { color: var(--green); }
+    .monitor-row { padding: 0.3rem 0; border-bottom: 1px solid var(--border); }
+    .monitor-row:last-child { border-bottom: none; }
     .pos-row, .paper-row { font-size: 0.78rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border); }
     .pos-row:last-child, .paper-row:last-child { border-bottom: none; }
     .source-auto { color: #c084fc; font-weight: 700; }
     .source-manual { color: var(--blue); }
     .source-paper { color: var(--yellow); }
+    .app-header { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+    .app-header h1 { font-size: 1.35rem; margin: 0; }
+    .header-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .chip { font-size: 0.68rem; padding: 0.25rem 0.55rem; border-radius: 999px; background: var(--card); border: 1px solid var(--border); color: var(--muted); }
+    .chip.ok { border-color: rgba(34,197,94,0.4); color: var(--green); }
+    .chip.bad { border-color: rgba(239,68,68,0.4); color: var(--red); }
+    .chip.warn { border-color: rgba(249,115,22,0.4); color: var(--urgent); }
+    .app-nav { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 1rem; padding: 0.35rem; background: var(--card); border: 1px solid var(--border); border-radius: 12px; position: sticky; top: 0.5rem; z-index: 50; }
+    .nav-btn { flex: 1; min-width: 100px; background: transparent; border: none; color: var(--muted); padding: 0.55rem 0.75rem; border-radius: 8px; font-size: 0.8rem; font-weight: 600; cursor: pointer; }
+    .nav-btn.active { background: var(--blue); color: #fff; }
+    .nav-btn .nav-badge { display: inline-block; min-width: 1.1rem; padding: 0 0.3rem; border-radius: 999px; background: rgba(0,0,0,0.25); font-size: 0.65rem; margin-left: 0.25rem; }
+    .tab-panel { display: none; animation: fadeIn 0.2s ease; }
+    .tab-panel.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0.6; } to { opacity: 1; } }
+    .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.55rem; margin-bottom: 0.85rem; }
+    .kpi { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem; text-align: center; }
+    .kpi .kpi-val { font-size: 1.35rem; font-weight: 800; margin-top: 0.15rem; }
+    .kpi .kpi-lbl { font-size: 0.65rem; color: var(--muted); text-transform: uppercase; }
+    .kpi.win .kpi-val { color: var(--green); }
+    .kpi.loss .kpi-val { color: var(--red); }
+    .card-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.85rem; margin-bottom: 0.85rem; }
+    .card-panel h3 { font-size: 0.9rem; margin-bottom: 0.5rem; }
+    .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 200; display: none; align-items: center; justify-content: center; padding: 1rem; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 1.25rem; width: 100%; max-width: 360px; }
+    .modal h4 { margin-bottom: 0.75rem; }
+    .modal input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.55rem; border-radius: 8px; margin: 0.5rem 0 0.75rem; }
+    .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .outcome-filters { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.65rem; }
+    body { max-width: 1280px; }
   </style>
 </head>
 <body>
-  <h1>Trading Bot</h1>
-  <p class="subtitle">Modo autónomo disponible · IA + monitor 24/7 · Sin garantía de ganancias</p>
+  <div class="loading-bar"><div class="fill" id="loading-fill"></div></div>
 
+  <header class="app-header">
+    <div>
+      <h1>Trading Bot</h1>
+      <p class="subtitle" style="margin:0.2rem 0 0">Centro de control · actualización automática cada 2s</p>
+    </div>
+    <div class="header-chips" id="header-chips">
+      <span class="chip" id="chip-monitor"><span class="status-dot off"></span> Monitor</span>
+      <span class="chip" id="chip-telegram">Telegram</span>
+      <span class="chip" id="chip-broker">Binance</span>
+      <span class="chip ok" id="chip-live">● LIVE</span>
+    </div>
+  </header>
+
+  <nav class="app-nav" id="app-nav">
+    <button class="nav-btn active" data-tab="overview" onclick="showTab('overview')">Resumen</button>
+    <button class="nav-btn" data-tab="signals" onclick="showTab('signals')">Señales <span class="nav-badge" id="nav-signals-count">0</span></button>
+    <button class="nav-btn" data-tab="bot" onclick="showTab('bot')">Bot</button>
+    <button class="nav-btn" data-tab="reliability" onclick="showTab('reliability')">Confiabilidad</button>
+    <button class="nav-btn" data-tab="history" onclick="showTab('history')">Historial</button>
+  </nav>
+
+  <div id="tab-overview" class="tab-panel active">
   <div class="top-bar">
     <div class="portfolio">
       <div class="label">Balance total (ambos perfiles)</div>
       <div class="amount" id="portfolio-total">— USDT</div>
     </div>
     <div>
-      <span class="status-dot" id="monitor-dot"></span>
-      <span id="monitor-status">Monitor</span> ·
-      <span id="telegram-status">Telegram</span> ·
-      <span class="live-indicator" id="live-indicator">● LIVE</span><br>
       <span class="refresh-note" id="last-update">—</span>
       <span class="refresh-note" id="ttl-info"></span>
     </div>
@@ -219,13 +272,6 @@
     </div>
   </div>
 
-  <div class="filter-bar" id="filter-bar">
-    <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">Todos</button>
-    <button class="filter-btn" data-filter="crypto" onclick="setFilter('crypto')">₿ Cripto</button>
-    <button class="filter-btn metal" data-filter="precious_metal" onclick="setFilter('precious_metal')">🥇 Metales</button>
-    <label class="hide-expired-row"><input type="checkbox" id="hide-expired" checked onchange="toggleHideExpired()"> Ocultar caducadas</label>
-  </div>
-
   <div class="markets-section">
     <div class="section-toggle" onclick="toggleSection('markets-body')">
       <h3>Mercados (<span id="markets-count">0</span>)</h3>
@@ -236,42 +282,181 @@
     </div>
   </div>
 
-  <div class="auto-trades-panel" id="auto-trades-panel">
-    <h3>🤖 Trades automáticos y posiciones Binance</h3>
-    <div id="binance-positions" class="bp-meta">Cargando posiciones…</div>
-    <div id="auto-trades-open" style="margin-top:0.4rem"></div>
-    <div id="paper-trades-open" style="margin-top:0.35rem"></div>
+  <div class="monitor-panel" id="monitor-panel">
+    <h3>Estado del sistema</h3>
+    <div id="monitor-health" class="bp-meta">Cargando…</div>
+  </div>
+  </div><!-- /tab-overview -->
+
+  <div id="tab-signals" class="tab-panel">
+    <div class="filter-bar" id="filter-bar">
+      <button class="filter-btn active" data-filter="all" onclick="setFilter('all')">Todos</button>
+      <button class="filter-btn" data-filter="crypto" onclick="setFilter('crypto')">₿ Cripto</button>
+      <button class="filter-btn metal" data-filter="precious_metal" onclick="setFilter('precious_metal')">🥇 Metales</button>
+      <label class="hide-expired-row"><input type="checkbox" id="hide-expired" checked onchange="toggleHideExpired()"> Ocultar caducadas</label>
+    </div>
+    <div class="profile-tabs" id="profile-tabs"></div>
+    <div id="active-profile"></div>
   </div>
 
-  <div class="storage-banner" id="storage-banner">
-    💾 Tus trades se guardan en <strong>trading_bot.db</strong> (tabla <strong>user_trades</strong>) en esta carpeta del proyecto.
+  <div id="tab-bot" class="tab-panel">
+    <div class="auto-trades-panel" id="auto-trades-panel">
+      <h3>Posiciones Binance y trades del bot</h3>
+      <div id="binance-positions" class="bp-meta">Cargando…</div>
+      <div id="auto-trades-open" style="margin-top:0.4rem"></div>
+      <div id="paper-trades-open" style="margin-top:0.35rem"></div>
+    </div>
+    <div class="card-panel">
+      <h3>Actividad reciente del bot</h3>
+      <div id="monitor-journal"></div>
+    </div>
   </div>
-  <div class="loading-bar"><div class="fill" id="loading-fill"></div></div>
-  <div class="profile-tabs" id="profile-tabs"></div>
-  <div id="active-profile"></div>
-  <div class="toast" id="toast"></div>
 
-  <div class="section history-wrap">
-    <details>
-      <summary>Historial de trades (<span id="history-count">0</span>)</summary>
-      <div style="overflow-x:auto;margin-top:0.5rem">
+  <div id="tab-reliability" class="tab-panel">
+    <div class="kpi-grid" id="outcomes-kpi">
+      <div class="kpi"><div class="kpi-lbl">Total</div><div class="kpi-val" id="kpi-total">0</div></div>
+      <div class="kpi win"><div class="kpi-lbl">TP (acierto)</div><div class="kpi-val" id="kpi-wins">0</div></div>
+      <div class="kpi loss"><div class="kpi-lbl">SL (fallo)</div><div class="kpi-val" id="kpi-losses">0</div></div>
+      <div class="kpi"><div class="kpi-lbl">% confiabilidad</div><div class="kpi-val" id="kpi-pct">—</div></div>
+    </div>
+    <p class="bp-meta" id="outcomes-summary" style="margin-bottom:0.65rem"></p>
+    <div class="outcome-filters">
+      <button class="filter-btn active" data-ofilter="all" onclick="setOutcomeFilter('all')">Todas</button>
+      <button class="filter-btn" data-ofilter="TP2,TP1" onclick="setOutcomeFilter('TP2,TP1')">Ganadoras</button>
+      <button class="filter-btn" data-ofilter="STOP_LOSS,INVALIDATED" onclick="setOutcomeFilter('STOP_LOSS,INVALIDATED')">Perdedoras</button>
+      <button class="filter-btn" data-ofilter="NOT_EXECUTED" onclick="setOutcomeFilter('NOT_EXECUTED')">No ejecutadas</button>
+    </div>
+    <div class="card-panel" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto">
         <table>
-          <thead><tr><th>Fecha</th><th>Origen</th><th>Perfil</th><th>Par</th><th>Dir</th><th>Estado</th><th>P&L</th><th>Motivo</th></tr></thead>
-          <tbody id="history-body"><tr><td colspan="8" class="empty">Sin trades registrados</td></tr></tbody>
+          <thead><tr><th>Par</th><th>Dir</th><th>Grado</th><th>Ejecutada</th><th>Motivo</th><th>Resultado</th><th>Fecha</th></tr></thead>
+          <tbody id="outcomes-body"><tr><td colspan="7" class="empty">Cargando…</td></tr></tbody>
         </table>
       </div>
-    </details>
+    </div>
   </div>
+
+  <div id="tab-history" class="tab-panel">
+    <div class="card-panel" style="padding:0;overflow:hidden">
+      <div style="padding:0.65rem 0.85rem;font-size:0.85rem;font-weight:600">Trades registrados (<span id="history-count">0</span>)</div>
+      <div style="overflow-x:auto">
+        <table>
+          <thead><tr><th>Fecha</th><th>Origen</th><th>Perfil</th><th>Par</th><th>Dir</th><th>Estado</th><th>P&L</th><th>Motivo</th></tr></thead>
+          <tbody id="history-body"><tr><td colspan="8" class="empty">Sin trades</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="bp-meta" id="storage-banner" style="margin-top:0.75rem"></p>
+  </div>
+
+  <div class="modal-backdrop" id="close-modal" onclick="if(event.target===this)closeCloseModal()">
+    <div class="modal">
+      <h4>Cerrar trade</h4>
+      <p class="bp-meta">Indica el P&L en USDT (negativo si perdiste)</p>
+      <input type="number" id="close-pnl-input" step="0.01" placeholder="ej: 0.45 o -0.30" />
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeCloseModal()">Cancelar</button>
+        <button class="btn-danger" onclick="confirmCloseTrade()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
 
   <script>
     const API = window.location.origin;
     let dashboardData = null;
     let countdownTimer = null;
     let signalFilter = "all";
+    let outcomeFilter = "all";
     let activeProfileId = null;
     let isFetching = false;
     let hideExpired = true;
     let brokerExchangeLabel = "Bitunix";
+    let outcomesCache = [];
+    let pendingCloseTradeId = null;
+    let currentTab = "overview";
+
+    function showTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+      document.querySelectorAll(".nav-btn").forEach(b => b.classList.toggle("active", b.dataset.tab === tab));
+      const panel = document.getElementById("tab-" + tab);
+      if (panel) panel.classList.add("active");
+      if (tab === "reliability") loadSignalOutcomes();
+      if (tab === "bot") loadMonitoringJournal();
+    }
+
+    function setChip(id, text, state) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = text;
+      el.className = "chip" + (state ? " " + state : "");
+      if (id === "chip-monitor") {
+        el.innerHTML = `<span class="status-dot ${state === "ok" ? "on" : "off"}"></span> ${text}`;
+      }
+    }
+
+    function setOutcomeFilter(f) {
+      outcomeFilter = f;
+      document.querySelectorAll("[data-ofilter]").forEach(b =>
+        b.classList.toggle("active", b.dataset.ofilter === f));
+      renderOutcomesTable(outcomesCache);
+    }
+
+    function countActiveSignals() {
+      if (!dashboardData) return 0;
+      let n = 0;
+      for (const p of dashboardData.profiles || []) {
+        for (const s of p.signals || []) {
+          if (["CLOSED", "EXPIRED", "INVALIDATED"].includes(s.status)) continue;
+          if (hideExpired && (s.expires_in_seconds != null && s.expires_in_seconds <= 0)) continue;
+          n++;
+        }
+      }
+      return n;
+    }
+
+    function maybeAutoTab() {
+      if (!dashboardData) return;
+      let urgent = false;
+      for (const p of dashboardData.profiles || []) {
+        if ((p.signals || []).some(s => s.entry_urgent || s.entry_action === "ENTER_NOW")) {
+          urgent = true;
+          break;
+        }
+      }
+      if (urgent && currentTab === "overview") showTab("signals");
+    }
+
+    function openCloseModal(tradeId) {
+      pendingCloseTradeId = tradeId;
+      document.getElementById("close-pnl-input").value = "";
+      document.getElementById("close-modal").classList.add("open");
+      document.getElementById("close-pnl-input").focus();
+    }
+
+    function closeCloseModal() {
+      pendingCloseTradeId = null;
+      document.getElementById("close-modal").classList.remove("open");
+    }
+
+    async function confirmCloseTrade() {
+      const pnlNum = parseFloat(document.getElementById("close-pnl-input").value);
+      if (!pendingCloseTradeId || isNaN(pnlNum)) return showToast("P&L inválido");
+      const reason = pnlNum >= 0 ? "TAKE_PROFIT" : "STOP_LOSS";
+      const res = await fetch(`${API}/api/v1/user-trades/${pendingCloseTradeId}/close`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pnl_usdt: pnlNum, close_reason: reason }),
+      });
+      const data = await res.json();
+      closeCloseModal();
+      if (res.ok) {
+        showToast(`Cerrado · P&L $${pnlNum} · Balance $${data.new_balance}`);
+        await loadDashboardLite(true);
+      } else showToast(data.detail || "Error al cerrar");
+    }
 
     function showToast(msg) {
       const t = document.getElementById("toast");
@@ -303,7 +488,7 @@
 
     function setFilter(filter) {
       signalFilter = filter;
-      document.querySelectorAll(".filter-btn").forEach(btn => {
+      document.querySelectorAll("[data-filter]").forEach(btn => {
         btn.classList.toggle("active", btn.dataset.filter === filter);
       });
       if (dashboardData) {
@@ -577,7 +762,7 @@
           ${renderLeverageBanner(t.leverage, p.max_leverage)}
           ${renderTradePlan(t.trade_plan)}
           <div class="btn-row">
-            <button class="btn-danger" onclick="closeTrade(${t.id})">Cerrar trade (registrar P&L)</button>
+            <button class="btn-danger" onclick="openCloseModal(${t.id})">Cerrar trade</button>
           </div>
         </div>`).join("");
 
@@ -702,33 +887,15 @@
       }
     }
 
-    async function closeTrade(tradeId) {
-      const pnl = prompt("¿Cuánto ganaste o perdiste en USDT? (negativo si perdiste, ej: -0.30 o 0.50)");
-      if (pnl === null) return;
-      const pnlNum = parseFloat(pnl);
-      if (isNaN(pnlNum)) return alert("Número inválido");
-      const reason = pnlNum >= 0 ? "TAKE_PROFIT" : "STOP_LOSS";
-      const res = await fetch(`${API}/api/v1/user-trades/${tradeId}/close`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pnl_usdt: pnlNum, close_reason: reason }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        showToast(`Cerrado. P&L: $${pnlNum} · Balance: $${data.new_balance}`);
-        await loadDashboardLite(true);
-      } else showToast(data.detail || "Error al cerrar");
-    }
-
     function applyDashboardData(data, fullPrices) {
       dashboardData = data;
       document.getElementById("portfolio-total").textContent = `$${data.portfolio_total_usdt} USDT`;
-      document.getElementById("monitor-dot").className = "status-dot " + (data.monitor.running ? "on" : "off");
-      document.getElementById("monitor-status").textContent = data.monitor.running ? "Monitor activo" : "Monitor detenido";
-      document.getElementById("telegram-status").textContent = data.telegram_configured ? "Telegram OK" : "Telegram sin config";
-      const mode = fullPrices ? "precios en vivo" : "modo rápido";
+      setChip("chip-monitor", data.monitor.running ? "Monitor ON" : "Monitor OFF", data.monitor.running ? "ok" : "bad");
+      setChip("chip-telegram", data.telegram_configured ? "Telegram OK" : "Telegram —", data.telegram_configured ? "ok" : "warn");
+      const mode = fullPrices ? "vivo" : "rápido";
       document.getElementById("last-update").textContent = `Actualizado (${mode}) · `;
-      document.getElementById("ttl-info").textContent = "Señales caducan en " + (data.signal_ttl_hours || 4) + "h";
+      document.getElementById("ttl-info").textContent = "TTL " + (data.signal_ttl_hours || 4) + "h";
+      document.getElementById("nav-signals-count").textContent = countActiveSignals();
       if (data.storage) {
         document.getElementById("storage-banner").innerHTML =
           `💾 Trades en <strong>${data.storage.database_file}</strong> → <strong>${data.storage.trades_table}</strong>`;
@@ -783,6 +950,7 @@
         }).join("");
       }
       tickCountdowns();
+      maybeAutoTab();
     }
 
     async function loadDashboardLite(force) {
@@ -846,8 +1014,115 @@
           ? `${acc.message} · ${pos} posición(es) · ${data.can_execute ? "Auto-trade listo" : data.execute_reason}`
           : (acc.message || data.note);
         document.getElementById("broker-panel").classList.toggle("connected", !!acc.connected);
+        setChip("chip-broker", data.can_execute ? "Binance OK" : "Binance ⚠", data.can_execute ? "ok" : "warn");
         lastBrokerPositions = acc.positions || [];
         if (dashboardData) renderAutoTradesPanel(dashboardData, lastBrokerPositions);
+      } catch (e) { console.error(e); }
+    }
+
+    function lifecycleLabel(t) {
+      if (t.status === "OPEN") return '<span class="badge ok">Ejecutando</span>';
+      const m = {
+        STOP_LOSS: '<span class="badge danger">Cerró SL</span>',
+        TAKE_PROFIT: '<span class="badge ok">Cerró TP</span>',
+        TP1: '<span class="badge warn">TP1</span>',
+        SIGNAL_EXPIRED: '<span class="badge muted">Caducó señal</span>',
+        MANUAL: '<span class="badge muted">Manual</span>',
+      };
+      return m[t.close_reason] || `<span class="badge muted">${t.close_reason_label || t.close_reason || "Cerrado"}</span>`;
+    }
+
+    function renderMonitorJournal(data) {
+      const trades = (data.trades || []).filter(t => t.source === "auto");
+      const open = trades.filter(t => t.status === "OPEN");
+      const closed = trades.filter(t => t.status === "CLOSED");
+      const rows = [
+        ...open.map(t => `<div class="monitor-row">🟢 <strong>${t.symbol}</strong> ${t.direction} · ${lifecycleLabel(t)} · lev ${t.leverage}x</div>`),
+        ...closed.slice(0, 6).map(t => `<div class="monitor-row">⚫ <strong>${t.symbol}</strong> ${t.direction} · ${lifecycleLabel(t)} · P&L ${t.pnl_usdt || "—"}</div>`),
+      ];
+      document.getElementById("monitor-journal").innerHTML = rows.length
+        ? rows.join("")
+        : "<span class='bp-meta'>Sin trades automáticos aún</span>";
+    }
+
+    async function loadMonitoringJournal() {
+      try {
+        const res = await fetch(`${API}/api/v1/monitoring/journal?limit=25`);
+        if (!res.ok) return;
+        renderMonitorJournal(await res.json());
+      } catch (e) { console.error(e); }
+    }
+
+    function outcomeBadge(o) {
+      const m = {
+        TP2: '<span class="badge ok">TP2 ✓</span>',
+        TP1: '<span class="badge warn">TP1</span>',
+        STOP_LOSS: '<span class="badge danger">SL ✗</span>',
+        INVALIDATED: '<span class="badge danger">Invalidada</span>',
+        NO_ENTRY: '<span class="badge muted">Sin entrada</span>',
+        EXPIRED_OPEN: '<span class="badge muted">Caducó abierta</span>',
+        PENDING: '<span class="badge">Siguiendo…</span>',
+        EXECUTED: '<span class="badge ok">Ejecutada</span>',
+      };
+      return m[o] || `<span class="badge muted">${o}</span>`;
+    }
+
+    function renderOutcomesTable(outcomes) {
+      let list = outcomes || [];
+      if (outcomeFilter === "NOT_EXECUTED") list = list.filter(o => !o.executed);
+      else if (outcomeFilter !== "all") {
+        const set = new Set(outcomeFilter.split(","));
+        list = list.filter(o => set.has(o.outcome));
+      }
+      const rows = list.map(o => {
+        const dt = o.resolved_at ? new Date(o.resolved_at).toLocaleString("es-MX", { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" }) : "—";
+        return `<tr>
+          <td><strong>${o.symbol}</strong></td>
+          <td class="${o.direction === "LONG" ? "long" : "short"}">${o.direction}</td>
+          <td>${o.grade}</td>
+          <td>${o.executed ? "Sí" : "No"}</td>
+          <td>${o.skip_reason || "—"}</td>
+          <td>${outcomeBadge(o.outcome)}</td>
+          <td>${dt}</td>
+        </tr>`;
+      });
+      document.getElementById("outcomes-body").innerHTML = rows.length
+        ? rows.join("")
+        : '<tr><td colspan="7" class="empty">Sin resultados con este filtro</td></tr>';
+    }
+
+    async function loadSignalOutcomes() {
+      try {
+        const res = await fetch(`${API}/api/v1/signal-outcomes?limit=80`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const s = data.summary || {};
+        outcomesCache = data.outcomes || [];
+        document.getElementById("kpi-total").textContent = s.total_tracked || 0;
+        document.getElementById("kpi-wins").textContent = s.wins_tp || 0;
+        document.getElementById("kpi-losses").textContent = s.losses_sl || 0;
+        document.getElementById("kpi-pct").textContent =
+          s.effectiveness_pct != null ? `${s.effectiveness_pct}%` : "—";
+        document.getElementById("outcomes-summary").textContent =
+          "Mide si el precio habría tocado TP o SL aunque no ejecutaras el trade (capital, IA, o no viste la alerta).";
+        renderOutcomesTable(outcomesCache);
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadMonitoringHealth() {
+      try {
+        const res = await fetch(`${API}/api/v1/monitoring/health`);
+        if (!res.ok) return;
+        const h = await res.json();
+        const warns = (h.warnings || []).map(w => `<div class="monitor-warn">⚠ ${w}</div>`).join("");
+        const ollama = h.ollama || {};
+        const tg = h.telegram || {};
+        const mon = h.monitor || {};
+        document.getElementById("monitor-health").innerHTML =
+          (warns || '<div class="monitor-ok">✓ Sin alertas críticas</div>') +
+          `<div class="bp-meta" style="margin-top:0.35rem">Monitor: ${mon.running ? "activo" : "detenido"} · ` +
+          `Ollama: ${ollama.ok ? "OK" : "OFF"} · Telegram: ${tg.ok ? "OK" : "FALLO"} · ` +
+          `Ciclos: ${mon.cycles || 0}</div>`;
       } catch (e) { console.error(e); }
     }
 
@@ -867,10 +1142,16 @@
 
     loadDashboardFull();
     loadBrokerStatus();
+    loadMonitoringJournal();
+    loadMonitoringHealth();
     setInterval(loadDashboardLite, 2000);
     setInterval(loadDashboardFull, 20000);
     setInterval(loadBrokerStatus, 30000);
+    setInterval(loadMonitoringJournal, 10000);
+    setInterval(loadMonitoringHealth, 30000);
+    setInterval(() => { if (currentTab === "reliability") loadSignalOutcomes(); }, 60000);
     countdownTimer = setInterval(tickCountdowns, 1000);
+    document.addEventListener("keydown", e => { if (e.key === "Escape") closeCloseModal(); });
   </script>
 </body>
 </html>

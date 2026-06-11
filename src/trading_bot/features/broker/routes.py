@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -20,7 +22,15 @@ async def broker_status() -> dict:
     settings = get_settings()
     broker = BinanceBroker()
     can, reason = broker.can_execute()
-    account = broker.fetch_account()
+    account = await asyncio.to_thread(broker.fetch_account)
+    trading_ok, trading_error = (
+        await asyncio.to_thread(broker.check_trading_permission)
+        if broker.is_configured() and account.connected
+        else (False, "Sin API o sin conexión")
+    )
+    if can and not trading_ok:
+        can = False
+        reason = trading_error
     return {
         "broker_enabled": settings.broker_enabled,
         "auto_execute_on_enter": settings.auto_execute_on_enter,
@@ -29,6 +39,8 @@ async def broker_status() -> dict:
         "api_configured": broker.is_configured(),
         "can_execute": can,
         "execute_reason": reason,
+        "trading_permission_ok": trading_ok,
+        "trading_permission_error": None if trading_ok else trading_error,
         "account": {
             "connected": account.connected,
             "exchange": account.exchange,

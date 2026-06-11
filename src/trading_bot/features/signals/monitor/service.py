@@ -1,3 +1,4 @@
+import time
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -9,12 +10,14 @@ from trading_bot.core.enums import AlertType, AuditAction, SignalStatus, TradeDi
 from trading_bot.db.models.account import Account
 from trading_bot.db.models.alert_log import AlertLog
 from trading_bot.db.models.signal import Signal
+from trading_bot.db.models.user_trade import UserTrade
 from trading_bot.db.seed_profiles import ensure_profiles
 from trading_bot.infrastructure.audit.logger import AuditLogger
 from trading_bot.infrastructure.market_data.ccxt_client import DataCollector
 from trading_bot.features.autonomous.service import AutonomousTraderService
 from trading_bot.features.trades.paper.service import PaperTradingService
 from trading_bot.features.signals.generator import SignalGenerator
+from trading_bot.features.signals.outcome_tracker import SignalOutcomeTracker
 from trading_bot.features.signals.monitor.price_feed import PriceFeed
 from trading_bot.features.signals.strategies.trend_pullback_mvp import MarketContext
 from trading_bot.features.alerts.telegram import TelegramNotifier
@@ -41,6 +44,7 @@ class SignalMonitorService:
         self._last_reconcile: datetime | None = None
         self._last_daily_data_job: datetime | None = None
         self._cycles = 0
+        self._autonomous_retry_after: dict[int, float] = {}
 
     @property
     def watch_symbols(self) -> list[str]:
@@ -163,7 +167,11 @@ class SignalMonitorService:
     async def _scan_symbols(self) -> int:
         count = 0
         async with self.session_factory() as session:
-            profiles = await ensure_profiles(session)
+            profiles = [
+                p
+                for p in await ensure_profiles(session)
+                if p.profile_type in self.settings.active_profile_type_set()
+            ]
 
             trade_stats = None
             if self.settings.kelly_enabled:
@@ -237,6 +245,10 @@ class SignalMonitorService:
     async def _watch_active_signals(self) -> int:
         alerts = 0
         async with self.session_factory() as session:
+            outcome_tracker = SignalOutcomeTracker(session)
+            backfilled = await outcome_tracker.finalize_untracked_signals(self.price_feed)
+            if backfilled:
+                await session.commit()
             result = await session.execute(
                 select(Signal).where(
                     Signal.should_trade.is_(True),
@@ -254,18 +266,29 @@ class SignalMonitorService:
 
                     if signal.expires_at and datetime.now(UTC) > signal.expires_at.replace(tzinfo=UTC):
                         signal.status = SignalStatus.EXPIRED.value
+                        await auto_trader.close_trades_on_signal_expired(signal, price)
+                        await outcome_tracker.resolve_expired(signal, price)
                         if await self._send_alert_once(session, signal.id, AlertType.SIGNAL_EXPIRED, signal):
                             alerts += 1
                         continue
 
                     if await self._check_invalidation(session, signal, price):
+                        await outcome_tracker.resolve_invalidated(signal, price)
                         alerts += 1
                         continue
 
                     if signal.status == SignalStatus.WATCHING.value:
-                        alerts += await self._handle_watching(session, signal, price, paper_service)
+                        alerts += await self._handle_watching(
+                            session, signal, price, paper_service, outcome_tracker
+                        )
+                        await outcome_tracker.track_price(signal, price, entry_touched=False)
 
                     if signal.status == SignalStatus.ACTIVE.value:
+                        await self._retry_autonomous_if_pending(
+                            session, signal, price, auto_trader, outcome_tracker
+                        )
+                        if not await outcome_tracker.has_trade(signal.id):
+                            await outcome_tracker.track_price(signal, price, entry_touched=True)
                         events = await paper_service.update_open_trades(signal.symbol, price)
                         for trade, event in events:
                             if event == "STOP_LOSS":
@@ -310,6 +333,7 @@ class SignalMonitorService:
         signal: Signal,
         price: Decimal,
         paper_service: PaperTradingService,
+        outcome_tracker: SignalOutcomeTracker,
     ) -> int:
         alerts = 0
         if not signal.entry_price:
@@ -349,7 +373,15 @@ class SignalMonitorService:
 
             if self.settings.autonomous_trading_enabled:
                 result = await AutonomousTraderService(session, self.settings).process_entry(signal, price)
-                if result.blocked_reason:
+                if result.executed:
+                    await outcome_tracker.mark_executed(signal)
+                elif result.blocked_reason:
+                    await outcome_tracker.register_skip(
+                        signal,
+                        reason=SignalOutcomeTracker.classify_skip_reason(result.blocked_reason),
+                        entry_touched=True,
+                    )
+                    await outcome_tracker.track_price(signal, price, entry_touched=True)
                     if await self._send_alert_once(
                         session,
                         signal.id,
@@ -464,6 +496,7 @@ class SignalMonitorService:
         )
         session.add(signal)
         await session.flush()
+        await SignalOutcomeTracker(session).register_new_signal(signal)
         return signal
 
     async def _send_alert_once(
@@ -524,6 +557,65 @@ class SignalMonitorService:
             current_price=trade.exit_price,
             extra=extra or f"P&L: ${trade.pnl_usdt} USDT",
         )
+
+    async def _retry_autonomous_if_pending(
+        self,
+        session: AsyncSession,
+        signal: Signal,
+        price: Decimal,
+        auto_trader: AutonomousTraderService,
+        outcome_tracker: SignalOutcomeTracker,
+    ) -> None:
+        """Reintenta entrada en señales ACTIVE que no abrieron trade (p. ej. autónomo activado después)."""
+        if not self.settings.autonomous_trading_enabled:
+            return
+        if time.time() < self._autonomous_retry_after.get(signal.id, 0):
+            return
+
+        acc_result = await session.execute(select(Account).where(Account.id == signal.account_id))
+        account = acc_result.scalar_one_or_none()
+        if not account or account.profile_type not in self.settings.active_profile_type_set():
+            return
+
+        existing = await session.execute(
+            select(UserTrade.id).where(UserTrade.signal_id == signal.id).limit(1)
+        )
+        if existing.scalar_one_or_none():
+            return
+
+        self._autonomous_retry_after[signal.id] = time.time() + 300
+        result = await auto_trader.process_entry(signal, price)
+        if result.executed:
+            await outcome_tracker.mark_executed(signal)
+        elif result.blocked_reason:
+            await outcome_tracker.register_skip(
+                signal,
+                reason=SignalOutcomeTracker.classify_skip_reason(result.blocked_reason),
+                entry_touched=True,
+            )
+            await outcome_tracker.track_price(signal, price, entry_touched=True)
+            await self._send_alert_once(
+                session,
+                signal.id,
+                AlertType.AI_BLOCKED,
+                signal,
+                current_price=price,
+                extra=result.blocked_reason,
+            )
+        if result.executed:
+            extra = (
+                f"🤖 AUTO retry | trade#{result.trade_id} | "
+                f"IA:{result.ai_verdict or 'sin IA'} | Binance:{result.broker_order_id or result.message}"
+            )
+            await self._send_alert_once(
+                session,
+                signal.id,
+                AlertType.AUTONOMOUS_ENTRY,
+                signal,
+                current_price=price,
+                extra=extra,
+                urgent=True,
+            )
 
     @staticmethod
     def _profile_to_risk_state(profile: Account) -> AccountRiskState:
