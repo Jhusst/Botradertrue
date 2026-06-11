@@ -1,6 +1,25 @@
 import os
 
-os.environ.setdefault("MONITOR_ENABLED", "false")
+# Los tests SIEMPRE corren con entorno limpio: las variables de entorno tienen
+# prioridad sobre el .env real del usuario (que puede tener claves y live activado).
+_TEST_ENV = {
+    "MONITOR_ENABLED": "false",
+    "LIVE_MODE_ENABLED": "false",
+    "BROKER_ENABLED": "false",
+    "AUTONOMOUS_TRADING_ENABLED": "false",
+    "BINANCE_API_KEY": "",
+    "BINANCE_API_SECRET": "",
+    "BINANCE_TESTNET": "false",
+    "TELEGRAM_BOT_TOKEN": "",
+    "TELEGRAM_CHAT_ID": "",
+    "TELEGRAM_COMMANDS_ENABLED": "false",
+    "KELLY_ENABLED": "false",
+    "ML_FILTER_ENABLED": "false",
+    "AI_ENABLED": "false",
+    "DEBUG": "false",
+}
+for _key, _value in _TEST_ENV.items():
+    os.environ[_key] = _value
 
 from collections.abc import AsyncGenerator
 from decimal import Decimal

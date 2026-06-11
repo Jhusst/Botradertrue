@@ -31,7 +31,12 @@ class DataCollector:
             exchange_class = getattr(ccxt, exchange_id)
             self._exchange = exchange_class(config)
             if settings.binance_testnet and settings.binance_api_key:
-                self._exchange.set_sandbox_mode(True)
+                # CCXT >= 4.5 eliminó el sandbox de futuros; Binance usa "demo trading"
+                # (demo-fapi.binance.com) con API keys creadas en el entorno demo.
+                if hasattr(self._exchange, "enable_demo_trading"):
+                    self._exchange.enable_demo_trading(True)
+                else:
+                    self._exchange.set_sandbox_mode(True)
         return self._exchange
 
     def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 500) -> pd.DataFrame:
