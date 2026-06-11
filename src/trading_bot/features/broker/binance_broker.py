@@ -45,7 +45,7 @@ class BinanceBroker:
 
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
-        self._collector = DataCollector("binance")
+        self._collector = DataCollector("binance", for_trading=True)
 
     @property
     def exchange(self):

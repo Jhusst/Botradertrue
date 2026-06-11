@@ -8,10 +8,17 @@ from trading_bot.infrastructure.resilience import exchange_breaker, with_retry
 
 
 class DataCollector:
-    """Recolecta OHLCV desde exchanges vía CCXT (solo lectura)."""
+    """Recolecta OHLCV desde exchanges vía CCXT.
 
-    def __init__(self, exchange_id: str = "binance") -> None:
+    for_trading=False (default): datos de mercado PÚBLICOS de producción
+    (precios/velas completos aunque la cuenta sea demo).
+    for_trading=True: cuenta/órdenes — en modo testnet apunta al demo
+    trading de Binance (demo-fapi.binance.com).
+    """
+
+    def __init__(self, exchange_id: str = "binance", *, for_trading: bool = False) -> None:
         self.exchange_id = exchange_id
+        self.for_trading = for_trading
         self._exchange = None
 
     @property
@@ -21,7 +28,9 @@ class DataCollector:
 
             settings = get_settings()
             config: dict = {"enableRateLimit": True}
-            if settings.binance_api_key:
+            # Solo el cliente de trading lleva API keys. El de datos usa endpoints
+            # públicos de producción: con keys de demo, producción responde -2008.
+            if settings.binance_api_key and self.for_trading:
                 config["apiKey"] = settings.binance_api_key
                 config["secret"] = settings.binance_api_secret
             config["options"] = {
@@ -30,12 +39,11 @@ class DataCollector:
                 # (cada 60s); sin esto CCXT lanza la advertencia como error.
                 "warnOnFetchOpenOrdersWithoutSymbol": False,
             }
-            exchange_id = self.exchange_id
-            if settings.binance_testnet and settings.binance_api_key:
-                exchange_id = "binanceusdm"
+            use_demo = self.for_trading and settings.binance_testnet and settings.binance_api_key
+            exchange_id = "binanceusdm" if use_demo else self.exchange_id
             exchange_class = getattr(ccxt, exchange_id)
             self._exchange = exchange_class(config)
-            if settings.binance_testnet and settings.binance_api_key:
+            if use_demo:
                 # CCXT >= 4.5 eliminó el sandbox de futuros; Binance usa "demo trading"
                 # (demo-fapi.binance.com) con API keys creadas en el entorno demo.
                 if hasattr(self._exchange, "enable_demo_trading"):
