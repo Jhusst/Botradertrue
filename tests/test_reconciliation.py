@@ -135,6 +135,40 @@ async def test_caso_c_sl_ausente_se_repone(db_session: AsyncSession) -> None:
 
 
 @pytest.mark.asyncio
+async def test_caso_c_sl_condicional_del_api_nuevo_es_reconocida(db_session: AsyncSession) -> None:
+    """Regresión del bug SL_MISSING_ON_RECONCILE: las SL condicionales del API
+    nuevo reportan type unificado 'market' (el real va en info.orderType) y la
+    reconciliación las aplanaba creyéndolas ausentes."""
+    settings = _settings()
+    broker = _mock_broker(settings)
+    _, trade = await _make_broker_trade(db_session)
+
+    broker.exchange.fetch_positions.return_value = [
+        {"symbol": "BTC/USDT:USDT", "side": "long", "contracts": "0.002"}
+    ]
+    broker.exchange.fetch_open_orders.return_value = [
+        {
+            "symbol": "BTC/USDT:USDT",
+            "type": "market",  # ¡así reporta CCXT las algo orders!
+            "status": "open",
+            "stopPrice": 49000.0,
+            "clientOrderId": f"tbot-{trade.id}-sl",
+            "info": {"orderType": "STOP_MARKET", "algoType": "CONDITIONAL", "algoStatus": "NEW"},
+        }
+    ]
+
+    service = ReconciliationService(db_session, settings, broker=broker, notifier=FakeNotifier())
+    report = await service.run()
+
+    assert trade.status == "OPEN"  # protegida: NI se aplana NI se toca
+    assert trade.id not in report.sl_restored
+    sl_calls = [
+        c for c in broker.exchange.create_order.call_args_list if c.args[1] == "stop_market"
+    ]
+    assert not sl_calls  # no intentó reponer un SL que ya existe
+
+
+@pytest.mark.asyncio
 async def test_caso_e_ordenes_huerfanas_canceladas(db_session: AsyncSession) -> None:
     settings = _settings()
     broker = _mock_broker(settings)

@@ -94,11 +94,11 @@ class ReconciliationService:
                 continue
             await self._handle_unknown_position(resolved, pos, report)
 
-        # Caso C: posición existe pero sin SL activa
+        # Caso C: posición existe pero sin SL activa.
+        # Ojo: las condicionales del API nuevo reportan type unificado "market";
+        # el tipo real (STOP_MARKET) viene en info.orderType.
         sl_order_symbols = {
-            o.get("symbol")
-            for o in open_orders
-            if (o.get("type") or "").lower() in ("stop_market", "stop")
+            o.get("symbol") for o in open_orders if self._is_protective_stop(o)
         }
         for resolved, trades in trades_by_symbol.items():
             if resolved not in positions_by_symbol or resolved in sl_order_symbols:
@@ -140,6 +140,16 @@ class ReconciliationService:
 
         await self.session.commit()
         return report
+
+    @staticmethod
+    def _is_protective_stop(order: dict) -> bool:
+        """¿Es un stop-loss? Mira info.orderType (STOP_MARKET) además del
+        type unificado, porque las algo orders reportan type='market'."""
+        info = order.get("info") or {}
+        order_type = str(info.get("orderType") or info.get("origType") or order.get("type") or "").lower()
+        if "take_profit" in order_type:
+            return False
+        return "stop" in order_type
 
     def _is_broker_trade_sync(self, trade: UserTrade) -> bool:
         """Solo reconciliamos trades que tienen órdenes reales en el broker."""

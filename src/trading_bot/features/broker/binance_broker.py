@@ -222,18 +222,76 @@ class BinanceBroker:
             raise
 
     def fetch_order_by_client_id(self, symbol: str, client_order_id: str) -> dict[str, Any] | None:
+        """Busca una orden por clientOrderId en AMBOS espacios de Binance:
+        órdenes normales y condicionales/algo (SL/TP con stopPrice viven ahí
+        en el API nuevo y son invisibles para fetch_order clásico)."""
         import ccxt
 
         resolved = self.resolve_futures_symbol(symbol)
         try:
             return self.exchange.fetch_order(None, resolved, {"origClientOrderId": client_order_id})
         except ccxt.OrderNotFound:
+            pass
+
+        # Espacio algo/condicional: consulta directa por clientAlgoId (cualquier estado)
+        getter = getattr(self.exchange, "fapiPrivateGetAlgoOrder", None)
+        if getter is not None:
+            for param_name in ("clientAlgoId", "clientalgoid"):
+                try:
+                    raw = getter({param_name: client_order_id})
+                    parsed = self._parse_algo_order(raw)
+                    if parsed is not None:
+                        return parsed
+                except Exception:  # noqa: BLE001 — probar el siguiente formato
+                    continue
+
+        # Último recurso: escanear las condicionales abiertas
+        try:
+            for order in self.exchange.fetch_open_orders(resolved, params={"trigger": True}):
+                if order.get("clientOrderId") == client_order_id:
+                    return order
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+    @staticmethod
+    def _parse_algo_order(raw: dict | list | None) -> dict[str, Any] | None:
+        """Normaliza la respuesta del endpoint algo a un dict estilo CCXT."""
+        if isinstance(raw, list):
+            raw = raw[0] if raw else None
+        if not isinstance(raw, dict) or not raw.get("algoId"):
             return None
+        status_map = {
+            "NEW": "open",
+            "WORKING": "open",
+            "TRIGGERED": "closed",
+            "FILLED": "closed",
+            "CANCELLED": "canceled",
+            "CANCELED": "canceled",
+            "EXPIRED": "canceled",
+            "REJECTED": "rejected",
+        }
+        algo_status = str(raw.get("algoStatus") or "").upper()
+        return {
+            "id": str(raw.get("algoId")),
+            "clientOrderId": raw.get("clientAlgoId"),
+            "status": status_map.get(algo_status, "open"),
+            "type": str(raw.get("orderType") or "").lower(),
+            "stopPrice": raw.get("triggerPrice"),
+            "symbol": raw.get("symbol"),
+            "info": raw,
+        }
 
     @with_retry()
     def fetch_open_orders_safe(self, symbol: str | None = None) -> list[dict[str, Any]]:
+        """Órdenes abiertas de AMBOS espacios: normales + condicionales/algo."""
         resolved = self.resolve_futures_symbol(symbol) if symbol else None
-        return self.exchange.fetch_open_orders(resolved)
+        orders = list(self.exchange.fetch_open_orders(resolved))
+        try:
+            orders.extend(self.exchange.fetch_open_orders(resolved, params={"trigger": True}))
+        except Exception:  # noqa: BLE001 — entornos sin algo orders siguen funcionando
+            pass
+        return orders
 
     @with_retry()
     def fetch_positions_safe(self) -> list[dict[str, Any]]:

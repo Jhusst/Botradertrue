@@ -67,6 +67,30 @@ def test_open_position_returns_error_when_disabled(monkeypatch: pytest.MonkeyPat
     assert result.ok is False
 
 
+def test_parse_algo_order_normaliza_condicionales() -> None:
+    raw = {
+        "algoId": "1000000102924178",
+        "clientAlgoId": "tbot-9-sl",
+        "algoStatus": "NEW",
+        "orderType": "STOP_MARKET",
+        "triggerPrice": "5.5",
+        "symbol": "AVAXUSDT",
+    }
+    parsed = BinanceBroker._parse_algo_order(raw)
+    assert parsed["status"] == "open"
+    assert parsed["clientOrderId"] == "tbot-9-sl"
+    assert parsed["type"] == "stop_market"
+    assert parsed["stopPrice"] == "5.5"
+
+    triggered = BinanceBroker._parse_algo_order({**raw, "algoStatus": "TRIGGERED"})
+    assert triggered["status"] == "closed"
+    cancelled = BinanceBroker._parse_algo_order({**raw, "algoStatus": "CANCELLED"})
+    assert cancelled["status"] == "canceled"
+    assert BinanceBroker._parse_algo_order([]) is None
+    assert BinanceBroker._parse_algo_order(None) is None
+    assert BinanceBroker._parse_algo_order({"sin_algo_id": 1}) is None
+
+
 @patch.object(BinanceBroker, "can_execute", return_value=(True, "ok"))
 @patch.object(BinanceBroker, "resolve_futures_symbol", return_value="BTC/USDT:USDT")
 def test_open_position_success_mock(_resolve, _can, monkeypatch: pytest.MonkeyPatch) -> None:
