@@ -24,7 +24,12 @@ class DataCollector:
             if settings.binance_api_key:
                 config["apiKey"] = settings.binance_api_key
                 config["secret"] = settings.binance_api_secret
-            config["options"] = {"defaultType": "future"}
+            config["options"] = {
+                "defaultType": "future",
+                # La reconciliación pide órdenes de TODOS los símbolos a propósito
+                # (cada 60s); sin esto CCXT lanza la advertencia como error.
+                "warnOnFetchOpenOrdersWithoutSymbol": False,
+            }
             exchange_id = self.exchange_id
             if settings.binance_testnet and settings.binance_api_key:
                 exchange_id = "binanceusdm"

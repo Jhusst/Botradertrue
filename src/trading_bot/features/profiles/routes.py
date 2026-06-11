@@ -52,7 +52,10 @@ async def list_profiles(db: AsyncSession = Depends(get_db)) -> dict:
         )
         user_trades = trades.scalars().all()
         open_count = sum(1 for t in user_trades if t.status == "OPEN")
-        realized = sum((t.pnl_usdt or Decimal("0")) for t in user_trades if t.status == "CLOSED")
+        realized = sum(
+            ((t.pnl_usdt or Decimal("0")) for t in user_trades if t.status == "CLOSED"),
+            Decimal("0"),
+        )
         total_realized += realized
         total_equity += acc.balance_usdt + realized
         profiles.append(_profile_dict(acc, open_count, realized))

@@ -220,6 +220,21 @@
     .modal input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.55rem; border-radius: 8px; margin: 0.5rem 0 0.75rem; }
     .modal-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
     .outcome-filters { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.65rem; }
+    .safety-panel { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+    .safety-panel.paused { border-color: rgba(234,179,8,0.5); }
+    .safety-panel.killed { border-color: rgba(239,68,68,0.6); background: rgba(239,68,68,0.06); }
+    .safety-panel h3 { font-size: 0.9rem; }
+    .safety-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.55rem 0 0.4rem; }
+    .equity-bar { height: 8px; background: var(--bg); border: 1px solid var(--border); border-radius: 999px; overflow: hidden; margin-top: 0.35rem; }
+    .equity-bar .eq-fill { height: 100%; background: var(--green); width: 0%; transition: width 0.3s; }
+    .equity-bar .eq-fill.low { background: var(--red); }
+    .chart-btn { background: transparent; border: 1px solid var(--border); color: var(--muted); border-radius: 6px; padding: 0.15rem 0.45rem; font-size: 0.68rem; cursor: pointer; font-weight: 600; }
+    .chart-btn:hover { color: var(--text); border-color: var(--blue); opacity: 1; }
+    .chart-modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 300; display: none; align-items: center; justify-content: center; padding: 1rem; }
+    .chart-modal-backdrop.open { display: flex; }
+    .chart-modal { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 0.75rem; width: 100%; max-width: 980px; }
+    .chart-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .chart-modal iframe { width: 100%; height: 70vh; border: 0; border-radius: 8px; background: var(--bg); }
     body { max-width: 1280px; }
   </style>
 </head>
@@ -270,6 +285,20 @@
       <button class="btn-ghost" onclick="loadBrokerStatus()">Actualizar</button>
       <button class="btn-ghost" onclick="syncBrokerBalance()">Sync balance</button>
     </div>
+  </div>
+
+  <div class="safety-panel" id="safety-panel">
+    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem">
+      <h3>🛡 Seguridad</h3>
+      <div class="btn-row" style="margin-top:0">
+        <button class="btn-ghost" onclick="safetyPause()">⏸ Pausar entradas</button>
+        <button class="btn-ghost" onclick="safetyResume()">▶ Reanudar</button>
+        <button class="btn-danger" onclick="safetyFlattenAll()">🧯 Cerrar todo</button>
+      </div>
+    </div>
+    <div class="safety-chips" id="safety-chips"><span class="chip">Cargando…</span></div>
+    <div class="bp-meta" id="safety-equity">Equity — / piso —</div>
+    <div class="equity-bar"><div class="eq-fill" id="safety-equity-fill"></div></div>
   </div>
 
   <div class="markets-section">
@@ -358,6 +387,16 @@
         <button class="btn-ghost" onclick="closeCloseModal()">Cancelar</button>
         <button class="btn-danger" onclick="confirmCloseTrade()">Cerrar</button>
       </div>
+    </div>
+  </div>
+
+  <div class="chart-modal-backdrop" id="chart-modal" onclick="if(event.target===this)closeChartModal()">
+    <div class="chart-modal">
+      <div class="chart-modal-head">
+        <strong id="chart-modal-title">📈 Gráfico</strong>
+        <button class="btn-ghost" onclick="closeChartModal()">✕</button>
+      </div>
+      <iframe id="chart-iframe" src="about:blank" title="Gráfico TradingView" allowfullscreen></iframe>
     </div>
   </div>
 
@@ -469,6 +508,104 @@
       document.getElementById("loading-fill").style.width = on ? "70%" : "0%";
     }
 
+    // ---- Gráfico TradingView (modal único, reutilizado cambiando el src) ----
+    function openChartModal(symbol) {
+      if (!symbol) return;
+      const src = "https://s.tradingview.com/widgetembed/?symbol=BINANCE%3A" + symbol.replace("/", "") +
+        "&interval=60&theme=dark&style=1&locale=es&hide_side_toolbar=1&allow_symbol_change=0";
+      const iframe = document.getElementById("chart-iframe");
+      if (iframe.getAttribute("src") !== src) iframe.setAttribute("src", src);
+      document.getElementById("chart-modal-title").textContent = "📈 " + symbol;
+      document.getElementById("chart-modal").classList.add("open");
+    }
+
+    function closeChartModal() {
+      document.getElementById("chart-modal").classList.remove("open");
+    }
+
+    function chartBtn(symbol, label) {
+      if (!symbol) return "";
+      return `<button class="chart-btn" title="Ver gráfico de ${symbol}" onclick="event.stopPropagation();openChartModal('${symbol}')">${label || "📈 Gráfico"}</button>`;
+    }
+
+    // ---- Panel de seguridad ----
+    async function loadSafetyStatus() {
+      try {
+        const res = await fetch(`${API}/api/v1/safety/status`);
+        if (!res.ok) return;
+        renderSafetyPanel(await res.json());
+      } catch (e) { console.error(e); }
+    }
+
+    function renderSafetyPanel(s) {
+      const panel = document.getElementById("safety-panel");
+      panel.classList.toggle("killed", !!s.kill_switch_engaged);
+      panel.classList.toggle("paused", !s.kill_switch_engaged && !!s.entries_paused);
+      const chips = [];
+      chips.push(s.kill_switch_engaged
+        ? `<span class="chip bad">🔴 Kill-switch ACTIVADO${s.kill_switch_reason ? " · " + s.kill_switch_reason : ""}</span>`
+        : '<span class="chip ok">🟢 Kill-switch OK</span>');
+      chips.push(s.entries_paused
+        ? `<span class="chip warn">⏸ Entradas pausadas${s.pause_reason ? " · " + s.pause_reason : ""}</span>`
+        : '<span class="chip ok">▶ Entradas activas</span>');
+      const cb = s.circuit_breaker || "—";
+      chips.push(`<span class="chip ${cb === "closed" ? "ok" : "warn"}">Circuit breaker: ${cb}</span>`);
+      if (s.last_heartbeat_at) {
+        chips.push(`<span class="chip">💓 ${new Date(s.last_heartbeat_at).toLocaleTimeString("es")}</span>`);
+      }
+      document.getElementById("safety-chips").innerHTML = chips.join("");
+      const eq = s.equity_usdt != null ? parseFloat(s.equity_usdt) : null;
+      const floor = s.equity_floor_usdt != null ? parseFloat(s.equity_floor_usdt) : null;
+      document.getElementById("safety-equity").textContent =
+        `Equity ${eq != null ? "$" + eq.toFixed(2) : "—"} / piso ${floor != null ? "$" + floor.toFixed(2) : "—"}`;
+      const fill = document.getElementById("safety-equity-fill");
+      if (eq != null && floor != null && eq > 0) {
+        const pct = Math.max(0, Math.min(100, ((eq - floor) / eq) * 100));
+        fill.style.width = pct.toFixed(1) + "%";
+        fill.classList.toggle("low", eq <= floor * 1.05);
+      } else {
+        fill.style.width = "0%";
+      }
+    }
+
+    async function safetyPause() {
+      try {
+        const res = await fetch(`${API}/api/v1/safety/pause`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: "dashboard" }),
+        });
+        const data = await res.json();
+        showToast(res.ok ? "⏸ Entradas pausadas" : (data.detail || "Error al pausar"));
+      } catch (e) { showToast("Error de red al pausar"); }
+      loadSafetyStatus();
+    }
+
+    async function safetyResume() {
+      try {
+        const res = await fetch(`${API}/api/v1/safety/resume`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) showToast("▶ Entradas reanudadas");
+        else showToast(data.detail || "Error al reanudar");
+      } catch (e) { showToast("Error de red al reanudar"); }
+      loadSafetyStatus();
+    }
+
+    async function safetyFlattenAll() {
+      if (!window.confirm("¿Cerrar TODAS las posiciones a mercado?")) return;
+      try {
+        const res = await fetch(`${API}/api/v1/safety/flatten-all`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ confirm: "FLATTEN", reason: "dashboard" }),
+        });
+        const data = await res.json();
+        showToast(res.ok ? (data.message || "🧯 Posiciones cerradas") : (data.detail || "Error al cerrar todo"));
+      } catch (e) { showToast("Error de red al cerrar todo"); }
+      loadSafetyStatus();
+      loadDashboardLite(true);
+    }
+
     function toggleSection(id) {
       const el = document.getElementById(id);
       if (!el) return;
@@ -518,6 +655,7 @@
           <div class="m-name">${m.display_name.split("(")[0].trim()}</div>
           <div class="m-price">${m.last_price ? "$" + m.last_price : "—"}</div>
           <div class="m-status ${m.urgent ? 'hot' : ''}">${m.status_label}</div>
+          <div style="margin-top:0.3rem">${chartBtn(m.symbol, "📈")}</div>
         </div>`).join("");
     }
 
@@ -691,6 +829,7 @@
               <span class="tp">TP ${s.take_profit_1 || "—"}</span>
               <span>${s.recommended_leverage || "—"}x</span>
             </span>
+            ${chartBtn(s.symbol)}
           </div>
           <div class="sum-right">
             <span class="meta-chip ${ttlClass}" data-expires-at="${s.expires_at || ''}">
@@ -757,7 +896,7 @@
 
       const openHtml = openTrades.map(t => `
         <div class="open-trade">
-          <strong>${t.symbol} ${t.direction}</strong> · Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString("es") : "—"}
+          <strong>${t.symbol} ${t.direction}</strong> · Abierto: ${t.opened_at ? new Date(t.opened_at).toLocaleString("es") : "—"} ${chartBtn(t.symbol)}
           ${renderTradeLevels(t)}
           ${renderLeverageBanner(t.leverage, p.max_leverage)}
           ${renderTradePlan(t.trade_plan)}
@@ -987,9 +1126,13 @@
       }
 
       autoEl.innerHTML = autoOpen.length
-        ? "<strong>Bot (DB):</strong> " + autoOpen.map(t =>
-          `<div class="pos-row">${t.symbol} ${t.direction} ${t.leverage}x · E ${t.entry_price} · SL ${t.stop_loss}</div>`
-        ).join("")
+        ? "<strong>Bot (DB):</strong> " + autoOpen.map(t => {
+          const onBroker = (t.notes || "").includes("Binance");
+          const originBadge = onBroker
+            ? '<span class="badge ok">📡 En Binance</span>'
+            : '<span class="badge muted">📋 Solo registro (sin orden real)</span>';
+          return `<div class="pos-row">${t.symbol} ${t.direction} ${t.leverage}x · E ${t.entry_price} · SL ${t.stop_loss} ${originBadge} ${chartBtn(t.symbol)}</div>`;
+        }).join("")
         : "";
 
       paperEl.innerHTML = paper.length
@@ -1144,14 +1287,15 @@
     loadBrokerStatus();
     loadMonitoringJournal();
     loadMonitoringHealth();
-    setInterval(loadDashboardLite, 2000);
+    loadSafetyStatus();
+    setInterval(() => { loadDashboardLite(); loadSafetyStatus(); }, 2000);
     setInterval(loadDashboardFull, 20000);
     setInterval(loadBrokerStatus, 30000);
     setInterval(loadMonitoringJournal, 10000);
     setInterval(loadMonitoringHealth, 30000);
     setInterval(() => { if (currentTab === "reliability") loadSignalOutcomes(); }, 60000);
     countdownTimer = setInterval(tickCountdowns, 1000);
-    document.addEventListener("keydown", e => { if (e.key === "Escape") closeCloseModal(); });
+    document.addEventListener("keydown", e => { if (e.key === "Escape") { closeCloseModal(); closeChartModal(); } });
   </script>
 </body>
 </html>
