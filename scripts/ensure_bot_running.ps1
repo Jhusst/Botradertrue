@@ -4,6 +4,19 @@
 $ErrorActionPreference = "SilentlyContinue"
 $ProjectDir = Split-Path -Parent $PSScriptRoot
 
+# Mantener vivo Ollama (gate de IA) — si no responde, arrancarlo oculto
+$ollamaAlive = $false
+try {
+    $r = Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -TimeoutSec 3 -UseBasicParsing
+    $ollamaAlive = $r.StatusCode -eq 200
+} catch {}
+if (-not $ollamaAlive) {
+    $ollamaExe = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
+    if (Test-Path $ollamaExe) {
+        Start-Process -FilePath $ollamaExe -ArgumentList "serve" -WindowStyle Hidden
+    }
+}
+
 try {
     $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 3 -UseBasicParsing
     if ($response.StatusCode -eq 200) { exit 0 }  # ya está vivo
