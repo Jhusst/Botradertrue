@@ -38,6 +38,10 @@ class DataCollector:
                 # La reconciliación pide órdenes de TODOS los símbolos a propósito
                 # (cada 60s); sin esto CCXT lanza la advertencia como error.
                 "warnOnFetchOpenOrdersWithoutSymbol": False,
+                # El reloj del PC puede ir adelantado (-1021): CCXT mide la
+                # diferencia con el servidor y ajusta cada request firmado.
+                "adjustForTimeDifference": True,
+                "recvWindow": 10_000,
             }
             use_demo = self.for_trading and settings.binance_testnet and settings.binance_api_key
             exchange_id = "binanceusdm" if use_demo else self.exchange_id

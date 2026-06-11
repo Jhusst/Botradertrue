@@ -86,6 +86,12 @@ class BinanceBroker:
     def resolve_futures_symbol(self, symbol: str) -> str:
         return self._collector._resolve_symbol(symbol)
 
+    def _ensure_markets(self) -> None:
+        """amount_to_precision/price_to_precision exigen markets cargados;
+        a diferencia de los fetch_*, CCXT no los carga automáticamente ahí."""
+        if not getattr(self.exchange, "markets", None):
+            self.exchange.load_markets()
+
     def fetch_account(self, *, use_cache: bool = True) -> BrokerAccountSnapshot:
         if use_cache and self._account_cache is not None:
             cached, cached_at = self._account_cache
@@ -184,6 +190,7 @@ class BinanceBroker:
         self, symbol: str, side: str, stop_price: Decimal, *, client_order_id: str
     ) -> dict[str, Any]:
         """SL con closePosition=True: cierra el 100% sin importar la cantidad."""
+        self._ensure_markets()
         resolved = self.resolve_futures_symbol(symbol)
         px = self.exchange.price_to_precision(resolved, float(stop_price))
         params = {"stopPrice": px, "closePosition": True, "clientOrderId": client_order_id}
@@ -199,6 +206,7 @@ class BinanceBroker:
     def place_take_profit(
         self, symbol: str, side: str, tp_price: Decimal, *, client_order_id: str
     ) -> dict[str, Any]:
+        self._ensure_markets()
         resolved = self.resolve_futures_symbol(symbol)
         px = self.exchange.price_to_precision(resolved, float(tp_price))
         params = {"stopPrice": px, "closePosition": True, "clientOrderId": client_order_id}
@@ -283,6 +291,7 @@ class BinanceBroker:
     ) -> str:
         if entry_price <= 0:
             raise ValueError("Precio de entrada inválido")
+        self._ensure_markets()
         raw_amount = float(position_size_usdt / entry_price)
         resolved = self.resolve_futures_symbol(symbol)
         return self.exchange.amount_to_precision(resolved, raw_amount)
