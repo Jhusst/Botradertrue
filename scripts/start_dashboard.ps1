@@ -5,6 +5,17 @@ $ErrorActionPreference = "SilentlyContinue"
 $ProjectDir = Split-Path -Parent $PSScriptRoot
 $Url = "http://127.0.0.1:8000/dashboard"
 
+# Reactivar el guardián (por si el bot fue apagado con stop_bot.ps1)
+Enable-ScheduledTask -TaskName "TradingBotKeepAlive" | Out-Null
+
+# Ollama (gate de IA) también debe estar vivo
+try {
+    Invoke-WebRequest -Uri "http://localhost:11434/api/tags" -TimeoutSec 2 -UseBasicParsing | Out-Null
+} catch {
+    $ollamaExe = "$env:LOCALAPPDATA\Programs\Ollama\ollama.exe"
+    if (Test-Path $ollamaExe) { Start-Process -FilePath $ollamaExe -ArgumentList "serve" -WindowStyle Hidden }
+}
+
 $alive = $false
 try {
     $response = Invoke-WebRequest -Uri "http://127.0.0.1:8000/health" -TimeoutSec 2 -UseBasicParsing
