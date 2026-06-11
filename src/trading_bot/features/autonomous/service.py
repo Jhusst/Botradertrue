@@ -72,6 +72,21 @@ class AutonomousTraderService:
         if not self.is_enabled:
             return AutonomousResult(executed=False, message="Modo autónomo desactivado")
 
+        # Gate de seguridad persistente: pausa / kill-switch sobreviven reinicios
+        from trading_bot.db.init_db import ensure_bot_state
+
+        state = await ensure_bot_state(self.session)
+        if state.kill_switch_engaged:
+            return AutonomousResult(
+                executed=False,
+                blocked_reason=f"Kill-switch activado: {state.kill_switch_reason or 'sin motivo'}",
+            )
+        if state.entries_paused:
+            return AutonomousResult(
+                executed=False,
+                blocked_reason=f"Entradas pausadas: {state.pause_reason or 'manual'}",
+            )
+
         existing = await self.session.execute(
             select(UserTrade).where(
                 UserTrade.signal_id == signal.id,
@@ -158,23 +173,28 @@ class AutonomousTraderService:
         position_usdt = signal.position_size or (margin * Decimal(str(trade.leverage)))
 
         if self.settings.broker_enabled and self.settings.live_mode_enabled:
+            from trading_bot.core.exceptions import KillSwitchEngagedError, LiveModeBlockedError
+
             try:
-                result = engine.execute(
-                    symbol=signal.symbol,
-                    direction=signal.direction,
-                    entry_price=signal.entry_price or current_price,
+                outcome = await engine.execute_protected(
+                    session=self.session,
+                    trade=trade,
                     position_size_usdt=position_usdt,
                     leverage=trade.leverage,
-                    stop_loss=signal.stop_loss,
-                    take_profit_1=signal.take_profit_1,
                 )
-                if result.ok:
-                    broker_order_id = result.order_id
+                broker_msg = outcome.message
+                if outcome.ok:
+                    broker_order_id = outcome.entry_order_id
                     trade.notes = (trade.notes or "") + f" | Binance {broker_order_id}"
-                    broker_msg = result.message
-                else:
-                    broker_msg = result.message
-            except Exception as exc:
+                elif outcome.flattened:
+                    # La posición se abrió pero el SL falló y se aplanó: NO contar como abierto
+                    return AutonomousResult(
+                        executed=False,
+                        trade_id=trade.id,
+                        blocked_reason=broker_msg,
+                        ai_verdict=ai_verdict,
+                    )
+            except (LiveModeBlockedError, KillSwitchEngagedError) as exc:
                 broker_msg = str(exc)
 
         if self.settings.sync_balance_from_broker and broker_order_id:
@@ -242,7 +262,11 @@ class AutonomousTraderService:
         await self.notifier.send_raw(message, urgent=False)
 
     async def update_open_trades(self, symbol: str, current_price: Decimal) -> list[tuple[UserTrade, str]]:
-        """Cierra trades locales cuando precio toca SL/TP (Binance también tiene órdenes reduceOnly)."""
+        """Cierra trades locales cuando precio toca SL/TP.
+
+        Los trades con órdenes reales en Binance NO se cierran aquí con PnL
+        estimado: la reconciliación los cierra con el PnL real del exchange.
+        """
         result = await self.session.execute(
             select(UserTrade).where(UserTrade.symbol == symbol, UserTrade.status == "OPEN")
         )
@@ -250,6 +274,8 @@ class AutonomousTraderService:
         events: list[tuple[UserTrade, str]] = []
 
         for trade in trades:
+            if self.settings.broker_enabled and "Binance" in (trade.notes or ""):
+                continue
             event = self._check_exit(trade, current_price)
             if not event:
                 continue

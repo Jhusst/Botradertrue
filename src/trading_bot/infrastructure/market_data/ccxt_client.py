@@ -4,6 +4,7 @@ import pandas as pd
 
 from trading_bot.config.settings import get_settings
 from trading_bot.core.asset_catalog import is_futures_symbol
+from trading_bot.infrastructure.resilience import exchange_breaker, with_retry
 
 
 class DataCollector:
@@ -35,10 +36,60 @@ class DataCollector:
 
     def fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 500) -> pd.DataFrame:
         resolved = self._resolve_symbol(symbol)
-        raw = self.exchange.fetch_ohlcv(resolved, timeframe=timeframe, limit=limit)
+        raw = self._fetch_ohlcv_raw(resolved, timeframe, limit)
         df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
         df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
         return df
+
+    @with_retry()
+    def _fetch_ohlcv_raw(self, resolved_symbol: str, timeframe: str, limit: int) -> list:
+        exchange_breaker.check()
+        try:
+            raw = self.exchange.fetch_ohlcv(resolved_symbol, timeframe=timeframe, limit=limit)
+        except Exception:
+            exchange_breaker.record_failure()
+            raise
+        exchange_breaker.record_success()
+        return raw
+
+    def fetch_ohlcv_range(
+        self,
+        symbol: str,
+        timeframe: str,
+        since_ms: int,
+        until_ms: int | None = None,
+        *,
+        page_limit: int = 1500,
+    ) -> pd.DataFrame:
+        """Pagina fetch_ohlcv hasta cubrir el rango (Binance: máx 1500 velas/llamada)."""
+        resolved = self._resolve_symbol(symbol)
+        timeframe_ms = self._timeframe_to_ms(timeframe)
+        end = until_ms if until_ms is not None else int(datetime.now(UTC).timestamp() * 1000)
+
+        chunks: list = []
+        cursor = since_ms
+        while cursor < end:
+            raw = self.exchange.fetch_ohlcv(resolved, timeframe=timeframe, since=cursor, limit=page_limit)
+            if not raw:
+                break
+            chunks.extend(raw)
+            last_ts = raw[-1][0]
+            if last_ts <= cursor:
+                break  # el exchange no avanza: evitar loop infinito
+            cursor = last_ts + timeframe_ms
+
+        if not chunks:
+            return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df = pd.DataFrame(chunks, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df = df.drop_duplicates(subset="timestamp").sort_values("timestamp").reset_index(drop=True)
+        df = df[df["timestamp"] <= end]
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        return df
+
+    @staticmethod
+    def _timeframe_to_ms(timeframe: str) -> int:
+        units = {"m": 60_000, "h": 3_600_000, "d": 86_400_000, "w": 604_800_000}
+        return int(timeframe[:-1]) * units[timeframe[-1]]
 
     def fetch_multi_timeframe(self, symbol: str) -> dict[str, pd.DataFrame]:
         """Límites mínimos para la estrategia (4h≥200, 1h≥50, 15m≥30) — menos llamadas = más rápido."""

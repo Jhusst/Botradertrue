@@ -81,6 +81,62 @@ class Settings(BaseSettings):
     auto_paper_trade: bool = True
     monitor_use_live_data: bool = True
 
+    # Idempotencia / reconciliación
+    client_order_prefix: str = "tbot"
+    reconcile_interval_seconds: int = 60
+    reconcile_on_startup: bool = True
+    adopt_unknown_positions: bool = False
+
+    # Protección garantizada (SL obligatorio)
+    sl_placement_max_retries: int = 4
+    sl_placement_backoff_base_seconds: float = 1.0
+    flatten_on_protection_failure: bool = True
+
+    # Resiliencia de red
+    exchange_retry_max_attempts: int = 4
+    exchange_retry_backoff_base: float = 0.5
+    circuit_breaker_failure_threshold: int = 5
+    circuit_breaker_reset_seconds: float = 120.0
+    monitor_cycle_timeout_seconds: int = 120
+    watchdog_interval_seconds: int = 60
+    watchdog_stale_after_seconds: int = 180
+
+    # Kill-switch / límite absoluto de pérdida (pensado para cuenta chica)
+    max_total_loss_usdt: float = 50.0
+    min_equity_usdt: float = 0.0
+    initial_equity_usdt: float = 500.0
+    telegram_commands_enabled: bool = False
+    telegram_command_poll_seconds: int = 5
+
+    # Logging / operación
+    log_file_path: str = "./logs/trading_bot.log"
+    log_max_bytes: int = 10_485_760
+    log_backup_count: int = 10
+    startup_alert_enabled: bool = True
+
+    # Datos históricos / alt-data
+    data_dir: str = "./data"
+    history_backfill_days: int = 730
+    derivatives_enabled: bool = True
+
+    # Régimen de mercado
+    regime_detection_enabled: bool = True
+
+    # Kelly fraccionado (solo reduce el riesgo, nunca lo aumenta)
+    kelly_enabled: bool = False
+    kelly_fraction: float = 0.25
+    kelly_lookback_trades: int = 50
+    kelly_min_trades: int = 20
+    kelly_cap_risk_percent: float = 0.5
+    kelly_floor_risk_percent: float = 0.1
+
+    # Filtro ML (meta-labeling)
+    ml_filter_enabled: bool = False
+    ml_filter_mode: Literal["filter", "advise"] = "advise"
+    ml_min_success_probability: float = 0.55
+    ml_models_dir: str = "./models"
+    ml_retrain_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -66,6 +66,12 @@ class TelegramNotifier:
             AlertType.ENTRY_NOW,
             AlertType.ENTRY_APPROACHING,
             AlertType.STOP_LOSS,
+            AlertType.PROTECTION_FAILED,
+            AlertType.POSITION_FLATTENED,
+            AlertType.KILL_SWITCH,
+            AlertType.RECONCILE_MISMATCH,
+            AlertType.CIRCUIT_BREAKER,
+            AlertType.WATCHDOG_RESTART,
         }
         return await self.send_raw(message, urgent=urgent)
 
@@ -134,6 +140,22 @@ class TelegramNotifier:
             )
         if alert_type == AlertType.AI_BLOCKED:
             return f"🧠 <b>IA BLOQUEÓ AUTO-TRADE</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.PROTECTION_FAILED:
+            return f"🆘 <b>FALLO DE PROTECCIÓN</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.POSITION_FLATTENED:
+            return f"🧯 <b>POSICIÓN CERRADA A MERCADO</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.KILL_SWITCH:
+            return f"🛑 <b>KILL-SWITCH</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.RECONCILE_MISMATCH:
+            return f"⚖️ <b>DIVERGENCIA DB↔EXCHANGE</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.CIRCUIT_BREAKER:
+            return f"🔌 <b>CIRCUIT BREAKER ABIERTO</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.WATCHDOG_RESTART:
+            return f"🐶 <b>WATCHDOG REINICIÓ EL MONITOR</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.PROCESS_RESTARTED:
+            return f"🔄 <b>PROCESO REINICIADO</b>\n{base}{extra or ''}"
+        if alert_type == AlertType.MANUAL_CLOSED:
+            return f"✋ <b>CIERRE MANUAL</b>\n{base}{extra or ''}"
 
         return f"ℹ️ {alert_type.value}\n{base}{extra or ''}"
 

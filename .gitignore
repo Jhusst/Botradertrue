@@ -4,6 +4,10 @@ __pycache__/
 .pytest_cache/
 .env
 trading_bot.db
+trading_bot.db-*
+data/
+models/
+logs/
 *.egg-info/
 dist/
 build/
