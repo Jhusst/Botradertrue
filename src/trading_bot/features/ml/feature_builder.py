@@ -42,6 +42,17 @@ FEATURE_COLUMNS: list[str] = [
     "dist_swing_high_20_pct",
     "dist_swing_low_20_pct",
     "body_ratio_last_1h",
+    # Price action / patrones de velas (el modelo decide cuáles predicen)
+    "upper_wick_ratio_1h",
+    "lower_wick_ratio_1h",
+    "bullish_engulfing",
+    "bearish_engulfing",
+    "hammer",
+    "shooting_star",
+    "doji",
+    "candle_streak",
+    "range_vs_atr_1h",
+    "close_pos_in_candle_1h",
     # Setup
     "direction_long",
     "grade_a",
@@ -164,6 +175,56 @@ class FeatureBuilder:
         candle_range = float(last["high"] - last["low"])
         if candle_range > 0:
             f["body_ratio_last_1h"] = _safe(abs(float(last["close"] - last["open"])) / candle_range)
+
+        # --- Price action / patrones de velas (1h)
+        if candle_range > 0 and len(df_1h) >= 6:
+            prev = df_1h.iloc[-2]
+            body_top = max(float(last["open"]), float(last["close"]))
+            body_bottom = min(float(last["open"]), float(last["close"]))
+            body = body_top - body_bottom
+            upper_wick = float(last["high"]) - body_top
+            lower_wick = body_bottom - float(last["low"])
+            body_ratio = body / candle_range
+
+            f["upper_wick_ratio_1h"] = _safe(upper_wick / candle_range)
+            f["lower_wick_ratio_1h"] = _safe(lower_wick / candle_range)
+            f["close_pos_in_candle_1h"] = _safe((float(last["close"]) - float(last["low"])) / candle_range)
+
+            last_green = float(last["close"]) > float(last["open"])
+            last_red = float(last["close"]) < float(last["open"])
+            prev_green = float(prev["close"]) > float(prev["open"])
+            prev_red = float(prev["close"]) < float(prev["open"])
+            prev_body_top = max(float(prev["open"]), float(prev["close"]))
+            prev_body_bottom = min(float(prev["open"]), float(prev["close"]))
+
+            f["bullish_engulfing"] = float(
+                last_green and prev_red and body_bottom <= prev_body_bottom and body_top >= prev_body_top
+            )
+            f["bearish_engulfing"] = float(
+                last_red and prev_green and body_bottom <= prev_body_bottom and body_top >= prev_body_top
+            )
+            f["hammer"] = float(lower_wick >= 2 * body and upper_wick <= body and body_ratio < 0.35)
+            f["shooting_star"] = float(upper_wick >= 2 * body and lower_wick <= body and body_ratio < 0.35)
+            f["doji"] = float(body_ratio < 0.1)
+
+            # Racha con signo: +n velas verdes seguidas / -n rojas
+            streak = 0
+            for i in range(1, min(6, len(df_1h)) + 1):
+                candle = df_1h.iloc[-i]
+                if float(candle["close"]) > float(candle["open"]):
+                    if streak < 0:
+                        break
+                    streak += 1
+                elif float(candle["close"]) < float(candle["open"]):
+                    if streak > 0:
+                        break
+                    streak -= 1
+                else:
+                    break
+            f["candle_streak"] = float(streak)
+
+            if atr_1h and float(atr_1h) > 0:
+                f["range_vs_atr_1h"] = _safe(candle_range / float(atr_1h))
 
         # --- Setup
         f["direction_long"] = 1.0 if candidate.direction.value == "LONG" else 0.0

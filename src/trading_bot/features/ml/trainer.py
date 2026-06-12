@@ -81,7 +81,7 @@ class MetaModelTrainer:
             splits_used += 1
 
         mask = ~np.isnan(oos_pred)
-        if mask.sum() < 30 or len(np.unique(y[mask])) < 2:
+        if mask.sum() < 80 or len(np.unique(y[mask])) < 2:
             return TrainReport(
                 deployable=False,
                 auc_oos=0.0,
@@ -94,14 +94,38 @@ class MetaModelTrainer:
                 gate_failures=["Predicciones OOS insuficientes para evaluar"],
             )
 
-        auc = float(roc_auc_score(y[mask], oos_pred[mask]))
+        # 2) Validación ANIDADA temporal: el umbral se elige en el primer 60%
+        #    del OOS y la mejora se mide en el 40% final (jamás en el mismo
+        #    tramo — elegir y medir en el mismo set deja pasar ruido con suerte).
+        oos_idx = np.where(mask)[0]  # dataset ordenado por event_ts
+        cut = int(len(oos_idx) * 0.6)
+        sel_idx, eval_idx = oos_idx[:cut], oos_idx[cut:]
+        if len(eval_idx) < 40 or len(np.unique(y[eval_idx])) < 2:
+            return TrainReport(
+                deployable=False,
+                auc_oos=0.0,
+                baseline_win_rate=baseline_win_rate,
+                filtered_win_rate=0.0,
+                trades_kept_pct=0.0,
+                threshold=0.5,
+                n_events=len(y),
+                n_splits_used=splits_used,
+                gate_failures=["Tramo de evaluación insuficiente para validar el umbral"],
+            )
 
-        # 2) Calibración isotónica sobre OOS
+        auc = float(roc_auc_score(y[eval_idx], oos_pred[eval_idx]))
+
+        # Calibración y umbral SOLO con el tramo de selección
         calibrator = IsotonicRegression(out_of_bounds="clip")
-        calibrated = calibrator.fit_transform(oos_pred[mask], y[mask])
+        calibrated_sel = calibrator.fit_transform(oos_pred[sel_idx], y[sel_idx])
+        threshold, _, _ = self._pick_threshold(calibrated_sel, y[sel_idx])
 
-        # 3) Umbral: máximo uplift de win rate conservando >= 40% de trades
-        threshold, filtered_wr, kept_pct = self._pick_threshold(calibrated, y[mask])
+        # La mejora se mide en el tramo de evaluación (nunca visto al elegir)
+        calibrated_eval = calibrator.predict(oos_pred[eval_idx])
+        kept = calibrated_eval >= threshold
+        kept_pct = float(kept.mean() * 100)
+        filtered_wr = float(y[eval_idx][kept].mean() * 100) if kept.sum() >= 10 else 0.0
+        baseline_win_rate = float(y[eval_idx].mean() * 100)
 
         # 4) Gate de despliegue
         failures: list[str] = []

@@ -72,6 +72,40 @@ def test_derivados_y_regimen_pueblan(ctx, candidate) -> None:
     assert feats["hurst_100"] == pytest.approx(0.62)
 
 
+def test_patrones_de_velas(candidate) -> None:
+    """Envolvente alcista y martillo se detectan; los flags son 0/1."""
+    import numpy as np
+
+    dates = pd.date_range("2024-01-01", periods=100, freq="1h", tz="UTC")
+    base = pd.DataFrame(
+        {
+            "timestamp": dates,
+            "open": [100.0] * 100,
+            "high": [101.0] * 100,
+            "low": [99.0] * 100,
+            "close": [100.5] * 100,
+            "volume": [10.0] * 100,
+        }
+    )
+    # Penúltima vela roja chica; última verde que la envuelve por completo
+    base.loc[98, ["open", "high", "low", "close"]] = [100.6, 100.7, 100.1, 100.2]
+    base.loc[99, ["open", "high", "low", "close"]] = [100.0, 101.2, 99.9, 101.0]
+
+    ctx = MarketContext(symbol="BTC/USDT", df_4h=base.iloc[::4], df_1h=base, df_15m=base)
+    feats = FeatureBuilder().build(ctx, candidate)
+    assert feats["bullish_engulfing"] == 1.0
+    assert feats["bearish_engulfing"] == 0.0
+    assert 0.0 <= feats["close_pos_in_candle_1h"] <= 1.0
+
+    # Martillo: mecha inferior larga, cuerpo chico arriba
+    hammer = base.copy()
+    hammer.loc[99, ["open", "high", "low", "close"]] = [100.5, 100.65, 99.0, 100.6]
+    ctx_h = MarketContext(symbol="BTC/USDT", df_4h=hammer.iloc[::4], df_1h=hammer, df_15m=hammer)
+    feats_h = FeatureBuilder().build(ctx_h, candidate)
+    assert feats_h["hammer"] == 1.0
+    assert feats_h["shooting_star"] == 0.0
+
+
 def test_sin_lookahead(candidate) -> None:
     """Las features en t no cambian al añadir velas posteriores a t."""
     data = DataCollector.generate_sample_data(500)
