@@ -97,8 +97,12 @@ class SignalMonitorService:
             self._last_reconcile = now
 
         if self._should_run_daily_data_job(now):
-            await self._run_daily_data_job()
+            # Fire-and-forget: el backfill tarda minutos y NO debe bloquear el
+            # ciclo (congelaba el heartbeat y el watchdog reiniciaba el monitor)
+            import asyncio
+
             self._last_daily_data_job = now
+            asyncio.create_task(self._run_daily_data_job())
 
         return {
             "scanned": scanned,
