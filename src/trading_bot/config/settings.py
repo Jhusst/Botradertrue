@@ -126,6 +126,10 @@ class Settings(BaseSettings):
     # Régimen de mercado
     regime_detection_enabled: bool = True
 
+    # Estrategia de rango (Bollinger): opera los laterales donde la de
+    # tendencia descansa. APAGADA hasta validar la de tendencia en vivo.
+    range_strategy_enabled: bool = False
+
     # Kelly fraccionado (solo reduce el riesgo, nunca lo aumenta)
     kelly_enabled: bool = False
     kelly_fraction: float = 0.25

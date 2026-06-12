@@ -20,6 +20,7 @@ class SignalGenerator:
     def __init__(self) -> None:
         self.crypto_strategy = TrendPullbackMVPStrategy()
         self.metals_strategy = PreciousMetalsMVPStrategy()
+        self.range_strategy = None  # lazy: solo si range_strategy_enabled
         self.risk_manager = RiskManager()
         self.position_sizer = PositionSizer()
         self.kelly = KellyCalculator()
@@ -48,10 +49,31 @@ class SignalGenerator:
         ml_probability: float | None = None,
     ) -> SignalCreate:
         strategy = self._pick_strategy(ctx.symbol)
+
+        # En régimen RANGE la estrategia de tendencia descansa; si el flag está
+        # activo, la de rango toma el relevo (solo cripto, los metales tienen la suya)
+        settings_early = get_settings()
+        if (
+            settings_early.range_strategy_enabled
+            and ctx.regime is not None
+            and ctx.regime.regime.value == "RANGE"
+            and get_asset_info(ctx.symbol).asset_class == "crypto"
+        ):
+            if self.range_strategy is None:
+                from trading_bot.features.signals.strategies.range_bollinger_mvp import (
+                    RangeBollingerMVPStrategy,
+                )
+
+                self.range_strategy = RangeBollingerMVPStrategy()
+            strategy = self.range_strategy
+
         strategy_out = strategy.analyze(ctx)
 
         if strategy_out.direction == TradeDirection.NO_TRADE or strategy_out.setup_grade == SetupGrade.C:
-            return self._build_no_trade(ctx.symbol, strategy_out, account, "Setup no cumple criterios mínimos.")
+            return self._build_no_trade(
+                ctx.symbol, strategy_out, account, "Setup no cumple criterios mínimos.",
+                strategy_name=strategy.STRATEGY_NAME,
+            )
 
         assert strategy_out.entry_price and strategy_out.stop_loss
         assert strategy_out.take_profit_1 and strategy_out.take_profit_2
@@ -76,7 +98,8 @@ class SignalGenerator:
         assessment = self.risk_manager.assess(setup, account)
         if not assessment.approved:
             return self._build_no_trade(
-                ctx.symbol, strategy_out, account, assessment.rejection_reason or "Rechazado por riesgo."
+                ctx.symbol, strategy_out, account, assessment.rejection_reason or "Rechazado por riesgo.",
+                strategy_name=strategy.STRATEGY_NAME,
             )
 
         # Filtro ML (meta-labeling): mismo patrón que el AI gate, passthrough sin modelo
@@ -97,7 +120,8 @@ class SignalGenerator:
                 ml_model_version = ml_result.model_version
                 if settings.ml_filter_mode == "filter" and not ml_result.passed:
                     return self._build_no_trade(
-                        ctx.symbol, strategy_out, account, f"Filtro ML: {ml_result.reason}"
+                        ctx.symbol, strategy_out, account, f"Filtro ML: {ml_result.reason}",
+                        strategy_name=strategy.STRATEGY_NAME,
                     )
                 if settings.ml_filter_mode == "advise" and ml_result.probability is not None:
                     # Ajusta confianza ±15 alrededor de p=0.5, sin filtrar
@@ -184,7 +208,12 @@ class SignalGenerator:
         )
 
     def _build_no_trade(
-        self, symbol: str, out: StrategyOutput, account: AccountRiskState, reason: str
+        self,
+        symbol: str,
+        out: StrategyOutput,
+        account: AccountRiskState,
+        reason: str,
+        strategy_name: str | None = None,
     ) -> SignalCreate:
         return SignalCreate(
             symbol=symbol,
@@ -198,5 +227,5 @@ class SignalGenerator:
             invalidation_conditions=out.invalidation_conditions,
             should_trade=False,
             rejection_reason=reason,
-            strategy_name=self._pick_strategy(symbol).STRATEGY_NAME,
+            strategy_name=strategy_name or self._pick_strategy(symbol).STRATEGY_NAME,
         )
