@@ -327,6 +327,13 @@ class AutonomousTraderService:
         )
         closed: list[UserTrade] = []
         for trade in result.scalars().all():
+            # Un trade con posición REAL en Binance NO se cierra porque la señal
+            # caduque: la señal expira para ENTRAR, pero un trade abierto vive
+            # hasta que su SL/TP (que están en el exchange) se ejecuten. La
+            # reconciliación lo cerrará con el PnL real cuando eso ocurra.
+            if self.settings.broker_enabled and "Binance" in (trade.notes or ""):
+                continue
+
             pnl = self._estimate_pnl(trade, current_price)
             trade.status = "CLOSED"
             trade.exit_price = current_price

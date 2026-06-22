@@ -135,3 +135,50 @@ async def test_process_entry_ai_blocks(db_session, monkeypatch: pytest.MonkeyPat
 
     assert result.executed is False
     assert result.ai_verdict == "DISAGREE"
+
+
+@pytest.mark.asyncio
+async def test_signal_expired_no_cierra_trade_de_broker(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Una señal que caduca NO cierra un trade con posición REAL en Binance:
+    ese trade vive hasta que su SL/TP se ejecute (lo cierra la reconciliación)."""
+    from decimal import Decimal
+
+    from trading_bot.db.models.account import Account
+    from trading_bot.db.models.signal import Signal
+    from trading_bot.db.models.user_trade import UserTrade
+
+    _patch_settings(monkeypatch, broker_enabled=True)
+
+    account = Account(name="x", balance_usdt=Decimal("500"))
+    db_session.add(account)
+    await db_session.flush()
+    signal = Signal(
+        account_id=account.id, symbol="DOGE/USDT", direction="SHORT", primary_timeframe="1h",
+        account_balance=Decimal("500"), risk_percent=Decimal("0.5"), setup_grade="A",
+        entry_price=Decimal("0.084"), stop_loss=Decimal("0.085"), should_trade=True,
+    )
+    db_session.add(signal)
+    await db_session.flush()
+
+    broker_trade = UserTrade(
+        account_id=account.id, signal_id=signal.id, symbol="DOGE/USDT", direction="SHORT",
+        status="OPEN", entry_price=Decimal("0.084"), stop_loss=Decimal("0.085"),
+        margin_used=Decimal("10"), leverage=5, risk_usdt=Decimal("2.5"),
+        notes="auto-entry @ 0.084 | Binance 1007791657",
+    )
+    paper_trade = UserTrade(
+        account_id=account.id, signal_id=signal.id, symbol="DOGE/USDT", direction="SHORT",
+        status="OPEN", entry_price=Decimal("0.084"), stop_loss=Decimal("0.085"),
+        margin_used=Decimal("10"), leverage=5, risk_usdt=Decimal("2.5"),
+        notes="manual|lev=5x",
+    )
+    db_session.add_all([broker_trade, paper_trade])
+    await db_session.commit()
+
+    svc = AutonomousTraderService(db_session)  # Telegram sin configurar en tests
+    await svc.close_trades_on_signal_expired(signal, Decimal("0.084"))
+
+    await db_session.refresh(broker_trade)
+    await db_session.refresh(paper_trade)
+    assert broker_trade.status == "OPEN"     # protegido: lo gestiona el exchange
+    assert paper_trade.status == "CLOSED"    # paper sí se cierra al expirar

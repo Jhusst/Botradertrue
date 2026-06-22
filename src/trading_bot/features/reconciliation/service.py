@@ -12,6 +12,7 @@ Además evalúa el piso de equity (límite de pérdida absoluto en USDT).
 from __future__ import annotations
 
 import asyncio
+import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -31,6 +32,11 @@ from trading_bot.features.broker.execution_service import OrderExecutionService
 from trading_bot.infrastructure.audit.logger import AuditLogger
 
 logger = structlog.get_logger()
+
+# Throttle de alertas de "posición desconocida": una vez cada N segundos por
+# símbolo (persiste entre ciclos porque el módulo vive en el proceso).
+_UNKNOWN_ALERT_THROTTLE_SECONDS = 1800.0
+_last_unknown_alert: dict[str, float] = {}
 
 
 @dataclass
@@ -88,9 +94,13 @@ class ReconciliationService:
             for trade in trades:
                 await self._close_with_real_pnl(trade, report)
 
-        # Caso B: posición en exchange sin trade en DB
+        # Caso B: posición en exchange sin trade OPEN en DB
         for resolved, pos in positions_by_symbol.items():
             if resolved in trades_by_symbol:
+                continue
+            # Antes de alertar: ¿es una posición NUESTRA que se cerró por error
+            # en la DB (falso cierre del Caso A)? Si sí, se re-adopta.
+            if await self._try_readopt(resolved, pos, report):
                 continue
             await self._handle_unknown_position(resolved, pos, report)
 
@@ -174,11 +184,11 @@ class ReconciliationService:
         exit_price: Decimal | None = None
         realized = Decimal("0")
         close_reason = "EXCHANGE_CLOSED"
+        reduce_fills: list = []
         try:
             fills = await asyncio.to_thread(self.broker.fetch_my_trades_since, trade.symbol, since_ms)
             sl_coid = self.execution.client_order_id(trade.id, BrokerOrder.KIND_SL)
             tp_coid = self.execution.client_order_id(trade.id, BrokerOrder.KIND_TP)
-            reduce_fills = []
             for fill in fills:
                 info = fill.get("info", {}) or {}
                 pnl = info.get("realizedPnl")
@@ -196,6 +206,18 @@ class ReconciliationService:
                     exit_price = Decimal(str(last["price"]))
         except Exception as exc:  # noqa: BLE001
             logger.warning("reconcile_pnl_fetch_failed", trade_id=trade.id, error=str(exc))
+            return  # fetch falló: NO cerrar a ciegas
+
+        # GUARDA CRÍTICA: solo cerramos si hay prueba real de cierre (un fill
+        # reduce-only con PnL). Sin fill, la "ausencia" de posición es casi
+        # siempre un parpadeo de fetch_positions — cerrar aquí inventaría un
+        # cierre que nunca ocurrió (bug que dejó huérfana la posición DOGE).
+        if not reduce_fills:
+            logger.warning(
+                "reconcile_skip_close_no_fill", trade_id=trade.id, symbol=trade.symbol,
+                detail="posición ausente pero sin fill de cierre: se mantiene OPEN",
+            )
+            return
 
         trade.status = "CLOSED"
         trade.exit_price = exit_price
@@ -234,6 +256,67 @@ class ReconciliationService:
                 extra=f"Cierre confirmado en Binance ({close_reason}). PnL real: ${realized} USDT",
             )
 
+    # Cierres que SÍ corresponden a un fill real en el exchange — esos no se re-adoptan
+    _REAL_CLOSE_REASONS = {"STOP_LOSS", "TAKE_PROFIT", "PROTECTION_FAILED", "MANUAL_CLOSE"}
+
+    async def _try_readopt(self, resolved: str, pos: dict, report: ReconcileReport) -> bool:
+        """Re-adopta una posición que es NUESTRA pero quedó CLOSED sin cierre real.
+
+        Cubre dos bugs: el falso cierre del Caso A (parpadeo de fetch_positions)
+        y el cierre por SIGNAL_EXPIRED (la señal caduca pero el trade sigue vivo
+        en Binance). Revierte el PnL estimado que se hubiera aplicado por error.
+        """
+        pos_side = "SHORT" if str(pos.get("side", "")).lower() == "short" else "LONG"
+        result = await self.session.execute(
+            select(UserTrade)
+            .where(UserTrade.status == "CLOSED")
+            .order_by(UserTrade.id.desc())
+            .limit(15)
+        )
+        for trade in result.scalars().all():
+            if self.broker.resolve_futures_symbol(trade.symbol) != resolved:
+                continue
+            if trade.direction != pos_side:
+                continue
+            if trade.close_reason in self._REAL_CLOSE_REASONS:
+                continue  # cierre legítimo por fill en el exchange, no re-adoptar
+            if not await self._has_broker_entry(trade):
+                continue
+
+            # Revertir el PnL estimado que el cierre por expiración aplicó por error
+            if trade.pnl_usdt:
+                acc_result = await self.session.execute(
+                    select(Account).where(Account.id == trade.account_id)
+                )
+                account = acc_result.scalar_one_or_none()
+                if account is not None:
+                    account.balance_usdt -= trade.pnl_usdt
+                    account.daily_pnl_usdt -= trade.pnl_usdt
+                    account.weekly_pnl_usdt -= trade.pnl_usdt
+
+            trade.status = "OPEN"
+            trade.exit_price = None
+            trade.pnl_usdt = None
+            trade.closed_at = None
+            trade.close_reason = None
+            trade.notes = (trade.notes or "") + " | re-adoptada por reconciliación"
+            await self.session.commit()
+            report.fixed += 1
+            AuditLogger.log(
+                "reconcile", AuditAction.RECONCILE_FIX,
+                f"Trade {trade.id} re-adoptado: la posición {resolved} seguía abierta y protegida",
+                entity_id=trade.id,
+            )
+            if self.notifier.is_configured:
+                await self.notifier.send_alert(
+                    AlertType.RECONCILE_MISMATCH,
+                    symbol=trade.symbol,
+                    direction=trade.direction,
+                    extra="Posición re-sincronizada: seguía abierta en Binance con su SL/TP. Sin acción necesaria.",
+                )
+            return True
+        return False
+
     async def _handle_unknown_position(self, symbol: str, pos: dict, report: ReconcileReport) -> None:
         report.alerts += 1
         AuditLogger.log(
@@ -252,6 +335,13 @@ class ReconciliationService:
                 report.fixed += 1
             except Exception as exc:  # noqa: BLE001
                 logger.error("reconcile_flatten_unknown_failed", symbol=symbol, error=str(exc))
+        # Throttle: no repetir la misma alerta cada ciclo (cada minuto)
+        now = time.monotonic()
+        last = _last_unknown_alert.get(symbol, 0.0)
+        if now - last < _UNKNOWN_ALERT_THROTTLE_SECONDS:
+            return
+        _last_unknown_alert[symbol] = now
+
         if self.notifier.is_configured:
             await self.notifier.send_alert(
                 AlertType.RECONCILE_MISMATCH,
@@ -260,7 +350,7 @@ class ReconciliationService:
                 extra=(
                     f"Posición en Binance sin trade en DB ({pos.get('contracts')} contratos). "
                     + ("Aplanada automáticamente." if self.settings.adopt_unknown_positions
-                       else "Revisa manualmente (ADOPT_UNKNOWN_POSITIONS=false).")
+                       else "Revisa manualmente (ADOPT_UNKNOWN_POSITIONS=false). Aviso cada 30 min.")
                 ),
             )
 
