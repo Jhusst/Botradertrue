@@ -126,6 +126,10 @@ class Settings(BaseSettings):
     # Régimen de mercado
     regime_detection_enabled: bool = True
 
+    # Umbral de puntaje de la estrategia de tendencia (5 = validado en backtest;
+    # bajarlo a 4 = más señales pero menor calidad — medir en backtest antes).
+    strategy_min_score: int = 5
+
     # Estrategia de rango (Bollinger): opera los laterales donde la de
     # tendencia descansa. APAGADA hasta validar la de tendencia en vivo.
     range_strategy_enabled: bool = False

@@ -111,16 +111,22 @@ class TrendPullbackMVPStrategy:
         if ctx.has_high_impact_event:
             return self._no_trade("Evento económico de alto impacto cercano.", atr_pct)
 
-        # Modulación por régimen de mercado (opcional: regime=None → sin cambio)
-        min_score = 5
+        # Modulación por régimen de mercado (opcional: regime=None → sin cambio).
+        # NOTA: HIGH_VOL NO bloquea. El backtest validado (+0.18R) corrió sin
+        # régimen; el guardia local de arriba (ATR > 2x media) ya frena los picos
+        # peligrosos por-trade, y el RiskManager recorta el riesgo a 0.25% en
+        # alta-vol. Bloquear todo el mercado en alta-vol dejaba al bot mudo justo
+        # cuando hay más movimiento (eran 10/10 símbolos en HIGH_VOL).
+        from trading_bot.config.settings import get_settings
+
+        min_score = get_settings().strategy_min_score
         if ctx.regime is not None:
             from trading_bot.features.regime.detector import MarketRegime
 
             regime = ctx.regime.regime
             if regime == MarketRegime.HIGH_VOL:
-                return self._no_trade(
-                    f"Régimen de alta volatilidad: {ctx.regime.explanation}", atr_pct
-                )
+                # No bloquea ni endurece: el RiskManager recorta el riesgo a 0.25%
+                reasons.append("Alta volatilidad: riesgo reducido (0.25%).")
             if regime == MarketRegime.TREND_UP and short_score > long_score:
                 return self._no_trade("Short contra régimen alcista bloqueado.", atr_pct)
             if regime == MarketRegime.TREND_DOWN and long_score > short_score:
